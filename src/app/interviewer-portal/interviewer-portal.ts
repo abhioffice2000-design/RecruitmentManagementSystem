@@ -2,8 +2,9 @@ import { Component } from '@angular/core';
 
 @Component({
   selector: 'app-interviewer-portal',
+  standalone: true,
   imports: [],
   templateUrl: './interviewer-portal.html',
-  styleUrl: './interviewer-portal.scss',
+  styleUrls: ['./interviewer-portal.scss'],
 })
 export class InterviewerPortal {}
