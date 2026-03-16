@@ -14,28 +14,30 @@
           <p>Sign in to your recruitment dashboard</p>
         </div>
 
-        <form (ngSubmit)="onLogin()" class="login-form">
+        <form (ngSubmit)="cordysLogin()" class="login-form">
           <!-- Error message -->
-          <div class="error-banner" *ngIf="errorMessage">
+          <div class="error-banner" *ngIf="errorUser || errorPass">
             <i class="fas fa-exclamation-circle"></i>
-            <span>{{ errorMessage }}</span>
+            <span>{{ errorUser || errorPass }}</span>
           </div>
 
-          <!-- Username -->
+          <!-- Email -->
           <div class="form-group">
-            <label for="username">Username</label>
+            <label for="email">Email</label>
             <div class="input-wrapper">
-              <i class="fas fa-user input-icon"></i>
+              <i class="fas fa-envelope input-icon"></i>
               <input
-                type="text"
-                id="username"
-                name="username"
-                [(ngModel)]="username"
-                placeholder="Enter your username"
-                autocomplete="username"
+                type="email"
+                id="email"
+                name="email"
+                [(ngModel)]="data.user"
+                placeholder="Enter your email"
+                autocomplete="email"
                 [disabled]="isLoading"
+                (focus)="clearErrors()"
               />
             </div>
+            <span class="field-error" *ngIf="errorUser">{{ errorUser }}</span>
           </div>
 
           <!-- Password -->
@@ -47,10 +49,11 @@
                 [type]="showPassword ? 'text' : 'password'"
                 id="password"
                 name="password"
-                [(ngModel)]="password"
+                [(ngModel)]="data.pass"
                 placeholder="Enter your password"
                 autocomplete="current-password"
                 [disabled]="isLoading"
+                (focus)="clearErrors()"
               />
               <button
                 type="button"
@@ -61,6 +64,7 @@
                 <i [class]="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
               </button>
             </div>
+            <span class="field-error" *ngIf="errorPass">{{ errorPass }}</span>
           </div>
 
           <!-- Options row -->
@@ -69,7 +73,7 @@
               <input type="checkbox" />
               <span>Remember me</span>
             </label>
-            <a href="javascript:void(0)" class="forgot-link">Forgot Password?</a>
+            <a routerLink="/forgot-password" class="forgot-link">Forgot Password?</a>
           </div>
 
           <!-- Submit -->
@@ -88,6 +92,7 @@
 
         <!-- Footer -->
         <div class="form-footer">
+          <p class="register-link">Don't have an account? <a routerLink="/register">Create Account</a></p>
           <p>&copy; 2026 Adnate IT Solutions. All rights reserved.</p>
         </div>
       </div>
@@ -145,5 +150,19 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div
+    class="toast-notification"
+    *ngIf="showToastFlag"
+    [class.toast-success]="toastType === 'success'"
+    [class.toast-error]="toastType === 'error'"
+  >
+    <i [class]="toastType === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle'"></i>
+    <span>{{ toastMessage }}</span>
+    <button class="toast-close" (click)="hideToast()">
+      <i class="fas fa-times"></i>
+    </button>
   </div>
 </div>

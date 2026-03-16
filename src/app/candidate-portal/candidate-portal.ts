@@ -2,8 +2,9 @@ import { Component } from '@angular/core';
 
 @Component({
   selector: 'app-candidate-portal',
+  standalone: true,
   imports: [],
   templateUrl: './candidate-portal.html',
-  styleUrl: './candidate-portal.scss',
+  styleUrls: ['./candidate-portal.scss'],
 })
 export class CandidatePortal {}
