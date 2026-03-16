@@ -35,6 +35,17 @@ export const routes: Routes = [
     path: 'hr',
     loadComponent: () =>
       import('./hr-dashboard/hr-dashboard').then((m) => m.HrDashboard),
+    children: [
+      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
+      { path: 'dashboard', loadComponent: () => import('./hr-dashboard/dashboard-tab/dashboard-tab').then(m => m.DashboardTab) },
+      { path: 'inbox', loadComponent: () => import('./hr-dashboard/inbox/inbox').then(m => m.InboxTab) },
+      { path: 'calendar', loadComponent: () => import('./hr-dashboard/calendar/calendar').then(m => m.CalendarTab) },
+      { path: 'jobs', loadComponent: () => import('./hr-dashboard/jobs/jobs').then(m => m.JobsTab) },
+      { path: 'candidates', loadComponent: () => import('./hr-dashboard/candidates/candidates').then(m => m.CandidatesTab) },
+      { path: 'referrals', loadComponent: () => import('./hr-dashboard/referrals/referrals').then(m => m.ReferralsTab) },
+      { path: 'report', loadComponent: () => import('./hr-dashboard/report/report').then(m => m.ReportTab) },
+      { path: 'settings', loadComponent: () => import('./hr-dashboard/settings/settings').then(m => m.SettingsTab) },
+    ]
   },
   {
     path: 'interviewer',

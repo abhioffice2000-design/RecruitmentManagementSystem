@@ -3,7 +3,7 @@
   "version": 1,
   "cli": {
     "packageManager": "npm",
-    "analytics": "83afd604-f55e-4bf7-af91-8ff68a70944f"
+    "analytics": false
   },
   "newProjectRoot": "projects",
   "projects": {
@@ -72,15 +72,12 @@
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
-          "options": {
-            "buildTarget": "RMS_Project:build"
-          },
           "configurations": {
             "production": {
-              "buildTarget": "RMS_Project:build:production"
+              "browserTarget": "RMS_Project:build:production"
             },
             "development": {
-              "buildTarget": "RMS_Project:build:development"
+              "browserTarget": "RMS_Project:build:development"
             }
           },
           "defaultConfiguration": "development"
