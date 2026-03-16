@@ -1,1 +1,61 @@
-<p>hr-dashboard works!</p>
+<div class="dashboard-layout">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5 10C5 7.23858 7.23858 5 10 5H90C92.7614 5 95 7.23858 95 10V40C91 40 88 42.5 88 46V54C88 57.5 91 60 95 60V90C95 92.7614 92.7614 95 90 95H10C7.23858 95 5 92.7614 5 90V60C9 60 12 57.5 12 54V46C12 42.5 9 40 5 40V10Z" fill="#082065"/>
+          <path d="M38 18 L55 18 L76 80 L63 80 L54 55 L32 55 L25 80 L13 80 L32 25" stroke="white" stroke-width="7" stroke-linejoin="round" stroke-linecap="round" fill="none"/>
+          <circle cx="34" cy="18" r="5" fill="#4fdfd8"/>
+          <circle cx="27" cy="44" r="5" fill="#4fdfd8"/>
+          <circle cx="64" cy="50" r="5" fill="#4fdfd8"/>
+          <circle cx="45" cy="65" r="5" fill="#4fdfd8"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <span class="brand-title">ADNATE</span>
+        <span class="brand-subtitle">IT Solutions</span>
+      </div>
+    </div>
+    
+    <nav class="nav-menu">
+      <a routerLink="dashboard" routerLinkActive="active" class="nav-item">
+        <span class="icon">⊞</span> Dashboard
+      </a>
+      <a routerLink="inbox" routerLinkActive="active" class="nav-item">
+        <span class="icon">✉</span> Inbox
+      </a>
+      <a routerLink="calendar" routerLinkActive="active" class="nav-item">
+        <span class="icon">📅</span> Calendar
+      </a>
+      <a routerLink="jobs" routerLinkActive="active" class="nav-item">
+        <span class="icon">💼</span> Jobs
+      </a>
+      <a routerLink="candidates" routerLinkActive="active" class="nav-item">
+        <span class="icon">👤</span> Candidates
+      </a>
+      <a routerLink="referrals" routerLinkActive="active" class="nav-item">
+        <span class="icon">👥</span> My referrals
+      </a>
+      <a routerLink="report" routerLinkActive="active" class="nav-item">
+        <span class="icon">📊</span> Report
+      </a>
+      <a routerLink="settings" routerLinkActive="active" class="nav-item">
+        <span class="icon">⚙</span> Settings
+      </a>
+    </nav>
+
+    <div class="promo-box dark">
+      <h3>Try new features!</h3>
+      <p>Subscribe to premium and power up your stats and results!</p>
+    </div>
+    
+    <div class="promo-box blue-accent">
+      <h3>Check updates!</h3>
+      <p>There are 3 new features in the latest update that can make your life easier.</p>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <router-outlet></router-outlet>
+  </main>
+</div>
