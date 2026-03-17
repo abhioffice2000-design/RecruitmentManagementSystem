@@ -123,15 +123,15 @@
           <div class="card-body">
             <div class="interview-mini" *ngFor="let iv of upcomingInterviews; let i = index" [style.animation-delay]="i * 0.08 + 's'">
               <div class="iv-avatar" [style.background]="'hsl(' + (i * 60 + 200) + ', 60%, 55%)'">
-                {{ getInitials(iv.candidate_name) }}
+                {{ getInitials(iv.application_id) }}
               </div>
               <div class="iv-info">
-                <strong>{{ iv.candidate_name }}</strong>
+                <strong>App: {{ iv.application_id }}</strong>
                 <span>{{ iv.interview_type }} · Round {{ iv.round_number }}</span>
               </div>
               <div class="iv-time">
-                <span class="iv-date">{{ formatDate(iv.slot_date) }}</span>
-                <span class="iv-slot">{{ formatTime(iv.start_time) }}</span>
+                <span class="iv-date" *ngIf="iv.slot_date">{{ formatDate(iv.slot_date) }}</span>
+                <span class="iv-slot" *ngIf="iv.start_time">{{ formatTime(iv.start_time) }}</span>
               </div>
             </div>
             <div class="empty-state" *ngIf="upcomingInterviews.length === 0">
@@ -188,11 +188,11 @@
         >
           <div class="iv-card-header">
             <div class="iv-card-avatar" [style.background]="'hsl(' + (i * 45 + 180) + ', 55%, 52%)'">
-              {{ getInitials(iv.candidate_name) }}
+              {{ getInitials(iv.application_id) }}
             </div>
             <div>
-              <h4>{{ iv.candidate_name }}</h4>
-              <span class="iv-email">{{ iv.candidate_email }}</span>
+              <h4>App: {{ iv.application_id }}</h4>
+              <span class="iv-email">ID: {{ iv.interview_id }}</span>
             </div>
             <span class="status-badge" [ngClass]="getStatusClass(iv.status)">
               {{ iv.status }}
@@ -202,13 +202,13 @@
           <div class="iv-card-details">
             <div class="detail-row">
               <i class="fas fa-briefcase"></i>
-              <span>{{ iv.job_title }} — {{ iv.department }}</span>
+              <span>Application ID: {{ iv.application_id }}</span>
             </div>
             <div class="detail-row">
               <i class="fas fa-layer-group"></i>
               <span>{{ iv.interview_type }} · Round {{ iv.round_number }}</span>
             </div>
-            <div class="detail-row">
+            <div class="detail-row" *ngIf="iv.slot_date && iv.start_time && iv.end_time">
               <i class="fas fa-clock"></i>
               <span>{{ formatDate(iv.slot_date) }}, {{ formatTime(iv.start_time) }} – {{ formatTime(iv.end_time) }}</span>
             </div>
@@ -302,14 +302,14 @@
                 <td>{{ formatTime(slot.start_time) }}</td>
                 <td>{{ formatTime(slot.end_time) }}</td>
                 <td>
-                  <span class="slot-status" [class.booked]="slot.is_booked" [class.available]="!slot.is_booked">
-                    {{ slot.is_booked ? 'Booked' : 'Available' }}
+                  <span class="slot-status" [class.booked]="isSlotBooked(slot)" [class.available]="!isSlotBooked(slot)">
+                    {{ isSlotBooked(slot) ? 'Booked' : 'Available' }}
                   </span>
                 </td>
                 <td>
                   <button
                     class="btn btn-danger btn-sm"
-                    [disabled]="slot.is_booked"
+                    [disabled]="isSlotBooked(slot)"
                     (click)="removeSlot(slot.slot_id)"
                     title="Remove slot"
                   >
@@ -375,8 +375,8 @@
         <div class="card-body">
           <div class="form-row">
             <div class="form-group">
-              <label>Delegate Email</label>
-              <input type="email" [(ngModel)]="newDelegation.delegateEmail" class="form-input" placeholder="colleague@adnate.com" />
+              <label>Delegate User ID</label>
+              <input type="text" [(ngModel)]="newDelegation.delegateUserId" class="form-input" placeholder="USR-000001" />
             </div>
             <div class="form-group">
               <label>Start Date</label>
@@ -410,10 +410,10 @@
           [style.animation-delay]="i * 0.08 + 's'"
         >
           <div class="del-header">
-            <div class="del-avatar">{{ getInitials(d.delegate_name) }}</div>
+            <div class="del-avatar">{{ d.delegate_user_id.substring(0,2) }}</div>
             <div>
-              <h4>{{ d.delegate_name }}</h4>
-              <span class="del-email">{{ d.delegate_email }}</span>
+              <h4>{{ d.delegate_user_id }}</h4>
+              <span class="del-email">Delegated</span>
             </div>
             <span class="del-status" [class.active]="d.status === 'ACTIVE'" [class.revoked]="d.status === 'REVOKED'">
               {{ d.status }}
@@ -430,7 +430,7 @@
             </div>
           </div>
           <div class="del-actions" *ngIf="d.status === 'ACTIVE'">
-            <button class="btn btn-danger btn-sm" (click)="revokeDelegation(d.delegation_id)">
+            <button class="btn btn-danger btn-sm" (click)="revokeDelegation(d)">
               <i class="fas fa-ban"></i> Revoke
             </button>
           </div>
@@ -456,10 +456,10 @@
     </div>
     <div class="modal-body">
       <div class="feedback-candidate">
-        <div class="fb-avatar">{{ getInitials(feedbackForm.candidate_name) }}</div>
+        <div class="fb-avatar">FB</div>
         <div>
-          <strong>{{ feedbackForm.candidate_name }}</strong>
-          <span>{{ feedbackForm.job_title }}</span>
+          <strong>{{ feedbackForm.interview_id }}</strong>
+          <span>{{ feedbackInterview?.interview_type }}</span>
         </div>
       </div>
 

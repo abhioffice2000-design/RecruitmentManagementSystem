@@ -12,79 +12,63 @@
         </svg>
         <span>{{ today }}</span>
       </div>
-      <button class="btn btn-primary ml-3 glass-panel">
-        Schedule Interview
-      </button>
     </div>
   </div>
 
   <div class="timeline-container glass-panel card">
     
     <div class="timeline-header border-bottom pb-4 mb-4">
-      <h2 class="text-lg font-semibold">Today's Timeline</h2>
-      <div class="timeline-filters">
-        <span class="badge badge-neutral mr-2 cursor-pointer">All</span>
-        <span class="badge badge-primary mr-2 cursor-pointer">Technical</span>
-        <span class="badge badge-warning cursor-pointer">HR</span>
-      </div>
+      <h2 class="text-lg font-semibold">Interview Timeline</h2>
     </div>
 
     <div class="timeline">
       <ng-container *ngFor="let schedule of schedules">
         <div class="timeline-item">
           <div class="time-column">
-            <span class="font-medium">{{ schedule.time }}</span>
-            <span class="text-xs text-muted">{{ schedule.duration }}</span>
+            <span class="font-medium">{{ schedule.start_time }} - {{ schedule.end_time }}</span>
+            <span class="text-xs text-muted">{{ schedule.slot_date }}</span>
           </div>
           
           <div class="line-column">
             <div class="node" 
-                 [class.node-completed]="schedule.status === 'Completed'" 
-                 [class.node-active]="schedule.status === 'In Progress'"></div>
+                 [class.node-completed]="schedule.status === 'COMPLETED'" 
+                 [class.node-active]="schedule.status === 'SCHEDULED'"></div>
             <div class="line"></div>
           </div>
           
           <div class="content-column">
             <div class="interview-card card" 
-                 [class.card-active]="schedule.status === 'In Progress'"
-                 [class.card-completed]="schedule.status === 'Completed'">
+                 [class.card-active]="schedule.status === 'SCHEDULED'"
+                 [class.card-completed]="schedule.status === 'COMPLETED'">
               <div class="card-top">
-                <span class="badge" 
-                      [class.badge-success]="schedule.status === 'Completed'"
-                      [class.badge-primary]="schedule.status === 'In Progress'"
-                      [class.badge-neutral]="schedule.status === 'Upcoming'">
+                <span class="badge" [ngClass]="getStatusBadgeClass(schedule.status)">
                   {{ schedule.status }}
                 </span>
-                <button class="btn-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </button>
               </div>
               
               <div class="card-mid py-3">
-                <h3 class="text-md font-semibold text-main mb-1">{{ schedule.type }}</h3>
-                <p class="text-sm text-muted">{{ schedule.role }}</p>
+                <h3 class="text-md font-semibold text-main mb-1">{{ schedule.interview_type }} (Round {{ schedule.round_number }})</h3>
+                <p class="text-sm text-muted">Application: {{ schedule.application_id }}</p>
               </div>
               
               <div class="card-bottom border-top pt-3 flex justify-between items-center">
                 <div class="person-info">
-                  <div class="mini-avatar">{{ schedule.candidate.charAt(0) }}</div>
-                  <span class="text-sm font-medium">{{ schedule.candidate }}</span>
+                  <div class="mini-avatar">{{ schedule.interview_id.charAt(0) }}</div>
+                  <span class="text-sm font-medium">{{ schedule.interview_id }}</span>
                 </div>
                 
                 <div class="interviewer-info text-sm text-muted flex items-center gap-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <span>{{ schedule.interviewer }}</span>
+                  <span>Slot: {{ schedule.slot_id }}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </ng-container>
+
+      <div *ngIf="schedules.length === 0" class="text-center text-muted" style="padding: 2rem;">
+        No interviews found.
+      </div>
     </div>
     
   </div>
