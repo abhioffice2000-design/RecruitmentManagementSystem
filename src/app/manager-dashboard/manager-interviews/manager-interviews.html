@@ -14,28 +14,32 @@
       <ng-container *ngFor="let interview of upcomingInterviews">
         <div class="interview-card">
           <div class="time-block text-primary">
-            <strong>{{ interview.time }}</strong>
-            <span class="text-xs text-muted">{{ interview.duration }}</span>
+            <strong>{{ interview.slot_date }}</strong>
+            <span class="text-xs text-muted">{{ interview.start_time }} - {{ interview.end_time }}</span>
           </div>
           
           <div class="candidate-info">
-            <div class="font-medium text-main">{{ interview.candidate }}</div>
-            <div class="text-sm text-muted">Applying for {{ interview.role }}</div>
+            <div class="font-medium text-main">{{ interview.interview_type }} (Round {{ interview.round_number }})</div>
+            <div class="text-sm text-muted">Application: {{ interview.application_id }}</div>
           </div>
           
           <div class="interviewer-info">
-            <div class="text-xs text-muted">Interviewer</div>
-            <div class="text-sm text-main font-medium">{{ interview.interviewer }}</div>
+            <div class="text-xs text-muted">Slot</div>
+            <div class="text-sm text-main font-medium">{{ interview.slot_id }}</div>
           </div>
           
           <div class="status-action text-right">
-             <span class="badge badge-warning mb-2 inline-block">{{ interview.status }}</span>
-             <div>
-                <a class="text-primary text-sm font-medium hover:underline cursor-pointer">Join Link</a>
+             <span class="badge mb-2 inline-block" [ngClass]="getStatusClass(interview.status)">{{ interview.status }}</span>
+             <div *ngIf="interview.meeting_link">
+                <a [href]="interview.meeting_link" target="_blank" class="text-primary text-sm font-medium hover:underline cursor-pointer">Join Link</a>
              </div>
           </div>
         </div>
       </ng-container>
+
+      <div *ngIf="upcomingInterviews.length === 0" class="text-center text-muted" style="padding: 2rem;">
+        No interviews found.
+      </div>
     </div>
   </div>
 </div>

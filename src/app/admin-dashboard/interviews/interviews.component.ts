@@ -1,5 +1,22 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+
+declare var $: any;
+
+interface Interview {
+  interview_id: string;
+  application_id: string;
+  interview_type: string;
+  round_number: string;
+  slot_id: string;
+  meeting_link: string;
+  status: string;
+  created_by_user: string;
+  // Enriched from slot
+  slot_date: string;
+  start_time: string;
+  end_time: string;
+}
 
 @Component({
   selector: 'app-interviews',
@@ -8,14 +25,80 @@ import { CommonModule } from '@angular/common';
   templateUrl: './interviews.component.html',
   styleUrls: ['./interviews.component.scss']
 })
-export class InterviewsComponent {
-  today = 'October 25, 2026';
-  
-  schedules = [
-    { time: '09:00 AM', type: 'Technical Interview', candidate: 'Michael Chen', role: 'Backend Engineer', interviewer: 'Alex Johnson', duration: '60 min', status: 'Completed' },
-    { time: '11:00 AM', type: 'HR Screening', candidate: 'Sarah Jenkins', role: 'Senior Frontend Dev', interviewer: 'Emily Davis', duration: '30 min', status: 'In Progress' },
-    { time: '01:30 PM', type: 'System Design', candidate: 'Amanda Ross', role: 'Product Manager', interviewer: 'Sarah Connor', duration: '90 min', status: 'Upcoming' },
-    { time: '03:00 PM', type: 'Cultural Fit', candidate: 'David Smith', role: 'DevOps Engineer', interviewer: 'Mark Twain', duration: '45 min', status: 'Upcoming' },
-    { time: '04:30 PM', type: 'Technical Interview', candidate: 'James Wilson', role: 'Full Stack Developer', interviewer: 'Alex Johnson', duration: '60 min', status: 'Upcoming' }
-  ];
+export class InterviewsComponent implements OnInit {
+  today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  schedules: Interview[] = [];
+
+  private readonly NAMESPACE = 'http://schemas.cordys.com/RMST1DatabaseMetadata';
+
+  ngOnInit(): void {
+    this.loadAllInterviews();
+  }
+
+  // Load all interviews system-wide via GetTs_interviewsObjects
+  loadAllInterviews(): void {
+    $.cordys.ajax({
+      method: 'GetTs_interviewsObjects',
+      namespace: this.NAMESPACE,
+      parameters: {
+        fromInterview_id: '',
+        toInterview_id: ''
+      },
+      dataType: 'xml'
+    })
+    .done((xml: any) => {
+      const rows = xml.getElementsByTagName('tuple');
+      const list: Interview[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const interview: Interview = {
+          interview_id: r.getElementsByTagName('interview_id')[0]?.textContent || '',
+          application_id: r.getElementsByTagName('application_id')[0]?.textContent || '',
+          interview_type: r.getElementsByTagName('interview_type')[0]?.textContent || '',
+          round_number: r.getElementsByTagName('round_number')[0]?.textContent || '1',
+          slot_id: r.getElementsByTagName('slot_id')[0]?.textContent || '',
+          meeting_link: r.getElementsByTagName('meeting_link')[0]?.textContent || '',
+          status: r.getElementsByTagName('status')[0]?.textContent || '',
+          created_by_user: r.getElementsByTagName('created_by_user')[0]?.textContent || '',
+          slot_date: '',
+          start_time: '',
+          end_time: ''
+        };
+        list.push(interview);
+        if (interview.slot_id) {
+          this.enrichWithSlot(interview);
+        }
+      }
+      this.schedules = list;
+    })
+    .fail((err: any) => {
+      console.error('Admin interviews fetch error:', err);
+    });
+  }
+
+  enrichWithSlot(interview: Interview): void {
+    $.cordys.ajax({
+      method: 'GetTs_interview_slotsObject',
+      namespace: this.NAMESPACE,
+      parameters: { Slot_id: interview.slot_id },
+      dataType: 'xml'
+    })
+    .done((xml: any) => {
+      const r = xml.getElementsByTagName('tuple')[0];
+      if (r) {
+        interview.slot_date = r.getElementsByTagName('slot_date')[0]?.textContent || '';
+        interview.start_time = r.getElementsByTagName('start_time')[0]?.textContent || '';
+        interview.end_time = r.getElementsByTagName('end_time')[0]?.textContent || '';
+      }
+    });
+  }
+
+  getStatusBadgeClass(status: string): string {
+    switch (status) {
+      case 'COMPLETED': return 'badge-success';
+      case 'SCHEDULED': return 'badge-primary';
+      case 'CANCELLED': return 'badge-neutral';
+      default: return 'badge-neutral';
+    }
+  }
 }
