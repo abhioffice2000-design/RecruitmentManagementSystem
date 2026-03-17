@@ -12,12 +12,11 @@ declare var $: any;
   styleUrls: ['./register.component.scss'],
 })
 export class RegisterComponent {
-
   data = {
-    fullName: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
-    dob: '',
     password: '',
     confirmPassword: '',
   };
@@ -36,7 +35,10 @@ export class RegisterComponent {
   showConfirmPassword = false;
   isLoading = false;
 
-  constructor(private router: Router, private ngZone: NgZone) {}
+  constructor(
+    private router: Router,
+    private ngZone: NgZone,
+  ) {}
 
   // ─── Toast Helpers ────────────────────────────────────────
   showToast(message: string, type: 'success' | 'error' = 'error') {
@@ -70,13 +72,72 @@ export class RegisterComponent {
     this.errors[field] = '';
   }
 
+  // ─── Real-time Validators ─────────────────────────────────
+  validateEmail() {
+    const email = this.data.email.trim();
+    if (!email) {
+      this.errors['email'] = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.errors['email'] = 'Please enter a valid email address';
+    } else {
+      this.errors['email'] = '';
+    }
+  }
+
+  validatePhone() {
+    const phone = this.data.phone.replace(/[\s\-]/g, '');
+    if (!phone) {
+      this.errors['phone'] = 'Phone number is required';
+    } else if (!/^\d+$/.test(phone)) {
+      this.errors['phone'] = 'Phone number must contain only digits';
+    } else if (phone.length !== 10) {
+      this.errors['phone'] = 'Phone number must be exactly 10 digits';
+    } else {
+      this.errors['phone'] = '';
+    }
+  }
+
+  validatePassword() {
+    const pw = this.data.password;
+    if (!pw) {
+      this.errors['password'] = 'Password is required';
+    } else if (pw.length < 8) {
+      this.errors['password'] = 'Password must be at least 8 characters';
+    } else if (!/\d/.test(pw)) {
+      this.errors['password'] = 'Password must contain at least one digit';
+    } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pw)) {
+      this.errors['password'] = 'Password must contain at least one symbol';
+    } else {
+      this.errors['password'] = '';
+    }
+    // Re-validate confirm if already filled
+    if (this.data.confirmPassword) {
+      this.validateConfirmPassword();
+    }
+  }
+
+  validateConfirmPassword() {
+    if (!this.data.confirmPassword) {
+      this.errors['confirmPassword'] = 'Please confirm your password';
+    } else if (this.data.password !== this.data.confirmPassword) {
+      this.errors['confirmPassword'] = 'Passwords do not match';
+    } else {
+      this.errors['confirmPassword'] = '';
+    }
+  }
+
   // ─── Validation ───────────────────────────────────────────
   validate(): boolean {
     this.errors = {};
     let valid = true;
 
-    if (!this.data.fullName.trim()) {
-      this.errors['fullName'] = 'Full name is required';
+    if (!this.data.firstName.trim()) {
+      this.errors['firstName'] = 'First name is required';
+      valid = false;
+    }
+
+    if (!this.data.lastName.trim()) {
+      this.errors['lastName'] = 'Last name is required';
       valid = false;
     }
 
@@ -96,17 +157,17 @@ export class RegisterComponent {
       valid = false;
     }
 
-    if (!this.data.dob) {
-      this.errors['dob'] = 'Date of birth is required';
-      valid = false;
-    }
-
-
     if (!this.data.password) {
       this.errors['password'] = 'Password is required';
       valid = false;
-    } else if (this.data.password.length < 6) {
-      this.errors['password'] = 'Password must be at least 6 characters';
+    } else if (this.data.password.length < 8) {
+      this.errors['password'] = 'Password must be at least 8 characters';
+      valid = false;
+    } else if (!/\d/.test(this.data.password)) {
+      this.errors['password'] = 'Password must contain at least one digit';
+      valid = false;
+    } else if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(this.data.password)) {
+      this.errors['password'] = 'Password must contain at least one symbol';
       valid = false;
     }
 
@@ -131,34 +192,265 @@ export class RegisterComponent {
     this.isLoading = true;
     const self = this;
 
-    // Call Cordys SOAP to create user
-    $.cordys.ajax({
-      method: 'CreateUser',
-      namespace: 'http://schemas.cordys.com/UserManagement/1.0/Organization',
-      parameters: {
-        UserName: this.data.email,
-        Password: this.data.password,
-        FullName: this.data.fullName,
-        Email: this.data.email,
-        Phone: this.data.phone,
-        DateOfBirth: this.data.dob,
-      },
-    })
-      .done((response: any) => {
-        self.ngZone.run(() => {
-          self.isLoading = false;
-          self.showToast('Registration successful! Redirecting to login...', 'success');
-          setTimeout(() => {
-            self.router.navigate(['/login']);
-          }, 1500);
-        });
+    const firstName = this.data.firstName.trim();
+    const lastName = this.data.lastName.trim();
+
+    const now = new Date().toISOString();
+    const plainPassword = this.data.password;
+
+    // ── Step 1: Insert into ts_candidates ──────────────────
+    const candidateSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+      <SOAP:Body>
+        <UpdateTs_candidates xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+          <tuple>
+            <new>
+              <ts_candidates qAccess="0" qConstraint="0" qInit="0" qValues="">
+                <first_name>${firstName}</first_name>
+                <last_name>${lastName}</last_name>
+                <email>${this.data.email}</email>
+                <phone>${this.data.phone}</phone>
+                <linkedin_url></linkedin_url>
+                <experience_years></experience_years>
+                <location></location>
+                <created_at>${now}</created_at>
+                <created_by>${this.data.email}</created_by>
+                <updated_at>${now}</updated_at>
+                <updated_by>${this.data.email}</updated_by>
+                <temp1></temp1>
+                <temp2></temp2>
+                <temp3></temp3>
+                <temp4></temp4>
+                <temp5></temp5>
+              </ts_candidates>
+            </new>
+          </tuple>
+        </UpdateTs_candidates>
+      </SOAP:Body>
+    </SOAP:Envelope>`;
+
+    $.cordys
+      .ajax({
+        method: 'UpdateTs_candidates',
+        namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+        data: candidateSoap,
+        dataType: 'xml',
+      })
+      .done((candidateResponse: any) => {
+        // Extract candidate_id from response
+        let candidateId = '';
+        try {
+          if (typeof candidateResponse === 'string') {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(candidateResponse, 'text/xml');
+            const idNode = xmlDoc.getElementsByTagName('candidate_id');
+            if (idNode.length > 0) {
+              candidateId = idNode[0].textContent || '';
+            }
+          } else {
+            const idNode = $(candidateResponse).find('candidate_id');
+            if (idNode.length > 0) {
+              candidateId = idNode.first().text();
+            }
+          }
+        } catch (e) {
+          console.error('Error parsing candidate response:', e);
+        }
+        console.log('Step 1 done: Candidate inserted with ID', candidateId);
+
+        // ── Step 2: Hash the password ──────────────────────
+        const hashSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+          <SOAP:Body>
+            <HashPassword xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" preserveSpace="no" qAccess="0" qValues="">
+              <password>${plainPassword}</password>
+            </HashPassword>
+          </SOAP:Body>
+        </SOAP:Envelope>`;
+
+        $.cordys
+          .ajax({
+            method: 'HashPassword',
+            namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+            data: hashSoap,
+            dataType: 'xml',
+          })
+          .done((hashResponse: any) => {
+            // Extract hashed password from response
+            let hashedPassword = '';
+            try {
+              if (typeof hashResponse === 'string') {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(hashResponse, 'text/xml');
+                const hashNode = xmlDoc.getElementsByTagName('hashPassword');
+                // The innermost <hashPassword> contains the actual hash
+                if (hashNode.length > 0) {
+                  hashedPassword = hashNode[hashNode.length - 1].textContent || '';
+                }
+              } else {
+                // jQuery XML object - traverse the response
+                const hashNode = $(hashResponse).find('hashPassword');
+                if (hashNode.length > 0) {
+                  hashedPassword = hashNode.last().text();
+                }
+              }
+            } catch (e) {
+              console.error('Error parsing hash response:', e);
+            }
+
+            if (!hashedPassword) {
+              self.ngZone.run(() => {
+                self.isLoading = false;
+                self.showToast('Error hashing password. Please try again.', 'error');
+              });
+              return;
+            }
+
+            console.log('Step 2 done: Password hashed successfully');
+
+            // ── Step 3: Insert into ts_accounts ────────────
+            const accountSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+              <SOAP:Body>
+                <UpdateTs_accounts xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" reply="yes" commandUpdate="no" preserveSpace="no" batchUpdate="no">
+                  <tuple>
+                    <new>
+                      <ts_accounts qAccess="0" qConstraint="0" qInit="0" qValues="">
+                        <email>${self.data.email}</email>
+                        <password_hash>${hashedPassword}</password_hash>
+                        <account_type>candidate</account_type>
+                        <candidate_id>${candidateId}</candidate_id>
+                        <account_status>active</account_status>
+                        <email_verified>false</email_verified>
+                        <failed_login_attempts>0</failed_login_attempts>
+                        <last_login></last_login>
+                        <password_reset_token></password_reset_token>
+                        <password_reset_expiry></password_reset_expiry>
+                        <created_at>${now}</created_at>
+                        <updated_at>${now}</updated_at>
+                        <temp1></temp1>
+                        <temp2></temp2>
+                        <temp3></temp3>
+                        <temp4></temp4>
+                        <temp5></temp5>
+                      </ts_accounts>
+                    </new>
+                  </tuple>
+                </UpdateTs_accounts>
+              </SOAP:Body>
+            </SOAP:Envelope>`;
+
+            $.cordys
+              .ajax({
+                method: 'UpdateTs_accounts',
+                namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+                data: accountSoap,
+                dataType: 'xml',
+              })
+              .done((_accountResponse: any) => {
+                console.log('Step 3 done: Account created successfully');
+
+                // ── Step 4: Create Cordys User ────────────
+                const userSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <CreateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName>${self.data.email}</UserName>
+        <Description>${self.data.email}</Description>
+        <Credentials allowDuplicate="true">
+          <UserIDPassword>
+            <UserID>${self.data.email}</UserID>
+            <Password>${plainPassword}</Password>
+          </UserIDPassword>
+        </Credentials>
+        <Roles>
+          <Role>Candidate_RMST1</Role>
+        </Roles>
+      </User>
+    </CreateUserInOrganization>
+  </SOAP:Body>
+</SOAP:Envelope>`;
+
+                $.cordys
+                  .ajax({
+                    method: 'CreateUserInOrganization',
+                    namespace: 'http://schemas.cordys.com/UserManagement/1.0/Organization',
+                    data: userSoap,
+                    dataType: 'xml',
+                  })
+                  .done((_userResponse: any) => {
+                    console.log('Step 4 done: Cordys user created');
+                  
+                    // ── Step 5: Send Email ────────────
+
+                    const mailSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <RegistrationMailBPM xmlns="http://schemas.cordys.com/default">
+      <usermail>${self.data.email}</usermail>
+      <username>${self.data.firstName} ${self.data.lastName}</username>
+    </RegistrationMailBPM>
+  </SOAP:Body>
+</SOAP:Envelope>`;
+
+                    $.cordys
+                      .ajax({
+                        method: 'RegistrationMailBPM',
+                        namespace: 'http://schemas.cordys.com/default',
+                        data: mailSoap,
+                        dataType: 'xml',
+                      })
+                      .done((_mailResponse: any) => {
+                        console.log('Step 5 done: Email sent');
+                        self.ngZone.run(() => {
+                          self.isLoading = false;
+                          self.showToast('Registration successful! Please check your email.', 'success');
+                          setTimeout(() => {
+                            self.router.navigate(['/login']);
+                          }, 1500);
+                        });
+                      })
+                      .fail((mailError: any) => {
+                        console.error('Step 5 error (Email failed):', mailError);
+                        // ⚠️ IMPORTANT: Do NOT rollback here
+                        // User is already created everywhere
+                        self.ngZone.run(() => {
+                          self.isLoading = false;
+                          self.showToast('Registered successfully, but email failed.', 'error');
+                          setTimeout(() => {
+                            self.router.navigate(['/login']);
+                          }, 1500);
+                        });
+                      });
+                  })
+                  .fail((error: any) => {
+                    self.ngZone.run(() => {
+                      self.isLoading = false;
+                      console.error('Step 4 error (Cordys user creation):', error);
+                      // ⚠️ Important: DB already created, only Cordys failed
+                      self.showToast('User created in DB but failed in Cordys. Contact admin.', 'error');
+                    });
+                  });
+              })
+              .fail((error: any) => {
+                self.ngZone.run(() => {
+                  self.isLoading = false;
+                  console.error('Step 3 error (Account insert):', error);
+                  self.showToast('Account creation failed. Please contact admin.', 'error');
+                });
+              });
+          })
+          .fail((error: any) => {
+            self.ngZone.run(() => {
+              self.isLoading = false;
+              console.error('Step 2 error (Password hash):', error);
+              self.showToast('Password processing failed. Please try again.', 'error');
+            });
+          });
       })
       .fail((error: any) => {
         self.ngZone.run(() => {
           self.isLoading = false;
-          console.error('Registration error:', error);
+          console.error('Step 1 error (Candidate insert):', error);
           self.showToast('Registration failed. Please try again or contact admin.', 'error');
         });
       });
   }
+          
 }
