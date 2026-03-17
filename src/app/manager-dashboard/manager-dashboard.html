@@ -1,1 +1,95 @@
-<p>manager-dashboard works!</p>
+<div class="page-container animate-fade-in">
+
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Manager Dashboard</h1>
+      <p class="page-subtitle">Overview of team hiring progress and pending approvals.</p>
+    </div>
+  </div>
+
+  <!-- Stats Overview -->
+  <div class="stats-grid">
+    <ng-container *ngFor="let stat of overviewStats">
+      <div class="stat-card glass-panel">
+        <div class="stat-icon-wrapper" [ngClass]="stat.colorClass + '-bg'">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" class="stat-icon">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" [attr.d]="stat.icon" />
+          </svg>
+        </div>
+        <div class="stat-info">
+          <p class="stat-label">{{ stat.label }}</p>
+          <h3 class="stat-value">{{ stat.value }}</h3>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="dashboard-grid">
+    <!-- Pending Approvals from HR -->
+    <div class="dashboard-section glass-panel">
+      <div class="section-header">
+        <h2>Job Posting Approvals</h2>
+        <span class="badge badge-warning">{{ jobApprovals.length }} Pending</span>
+      </div>
+      <p class="text-muted text-sm mb-4">Review and approve new job requisitions requested by HR.</p>
+      
+      <div class="approval-list">
+        <div class="empty-state" *ngIf="jobApprovals.length === 0">
+          <p>No pending approvals at this time.</p>
+        </div>
+        <ng-container *ngFor="let req of jobApprovals">
+          <div class="approval-card">
+            <div class="card-details">
+              <div class="req-id">{{ req.id }}</div>
+              <h4>{{ req.title }}</h4>
+              <div class="req-meta">
+                <span>{{ req.department }}</span> &bull; <span>Requested by: {{ req.requestedBy }}</span> &bull; <span class="text-muted">{{ req.date }}</span>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-icon btn-approve" (click)="approveRequest(req.id)" title="Approve">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button class="btn btn-icon btn-reject" (click)="rejectRequest(req.id)" title="Reject">
+                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+
+    <!-- Upcoming Interviews & Reviews -->
+    <div class="dashboard-section glass-panel">
+      <div class="section-header">
+        <h2>Candidates to Review</h2>
+        <a href="javascript:void(0)" class="text-primary text-sm font-medium">View All</a>
+      </div>
+      
+      <div class="interview-list mt-4">
+        <ng-container *ngFor="let candidate of candidatesToReview">
+          <div class="interview-item">
+            <div class="avatar-lg">{{ candidate.name.charAt(0) }}</div>
+            <div class="item-details">
+              <h4>{{ candidate.name }}</h4>
+              <p class="text-sm text-muted">{{ candidate.position }}</p>
+            </div>
+            <div class="item-status text-right">
+              <div class="text-sm font-medium">{{ candidate.stage }}</div>
+              <div class="text-xs text-muted">{{ candidate.date }}</div>
+            </div>
+          </div>
+        </ng-container>
+      </div>
+      
+      <div class="mt-6">
+        <button class="btn outline-btn w-full">Go to Interview Schedule</button>
+      </div>
+    </div>
+  </div>
+
+</div>

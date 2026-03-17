@@ -24,7 +24,39 @@ export const routes: Routes = [
   {
     path: 'admin',
     loadComponent: () =>
-      import('./admin-dashboard/admin-dashboard').then((m) => m.AdminDashboard),
+      import('./admin-dashboard/admin-layout/admin-layout.component').then((m) => m.Admin_LayoutComponent),
+    children: [
+      {
+        path: '',
+        redirectTo: 'dashboard',
+        pathMatch: 'full',
+      },
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import('./admin-dashboard/admin-dashboard').then((m) => m.AdminDashboard),
+      },
+      {
+        path: 'candidates',
+        loadComponent: () =>
+          import('./admin-dashboard/candidates/candidates.component').then((m) => m.CandidatesComponent),
+      },
+      {
+        path: 'jobs',
+        loadComponent: () =>
+          import('./admin-dashboard/jobs/jobs.component').then((m) => m.JobsComponent),
+      },
+      {
+        path: 'interviews',
+        loadComponent: () =>
+          import('./admin-dashboard/interviews/interviews.component').then((m) => m.InterviewsComponent),
+      },
+      {
+        path: 'users',
+        loadComponent: () =>
+          import('./admin-dashboard/user-management/user-management').then((m) => m.UserManagement),
+      }
+    ]
   },
   {
     path: 'candidate',
@@ -55,6 +87,33 @@ export const routes: Routes = [
   {
     path: 'manager',
     loadComponent: () =>
-      import('./manager-dashboard/manager-dashboard').then((m) => m.ManagerDashboard),
+      import('./manager-dashboard/manager-layout/manager-layout').then((m) => m.ManagerLayout),
+    children: [
+      {
+        path: '',
+        redirectTo: 'dashboard',
+        pathMatch: 'full',
+      },
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import('./manager-dashboard/manager-dashboard').then((m) => m.ManagerDashboard),
+      },
+      {
+        path: 'team',
+        loadComponent: () =>
+          import('./manager-dashboard/manager-team/manager-team').then((m) => m.ManagerTeam),
+      },
+      {
+        path: 'requests',
+        loadComponent: () =>
+          import('./manager-dashboard/manager-jobs/manager-jobs').then((m) => m.ManagerJobs),
+      },
+      {
+        path: 'interviews',
+        loadComponent: () =>
+          import('./manager-dashboard/manager-interviews/manager-interviews').then((m) => m.ManagerInterviews),
+      }
+    ]
   },
 ];

@@ -1,0 +1,40 @@
+<div class="sidebar-container" [class.is-collapsed]="isCollapsed">
+  <div class="brand-section">
+    <div class="brand-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="var(--primary-color)" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      </svg>
+    </div>
+    <div class="brand-text" *ngIf="!isCollapsed">
+      <h2>Manager<span class="badge" style="margin-left:5px">Desk</span></h2>
+      <p>RMS Enterprise</p>
+    </div>
+    <button class="toggle-btn" (click)="toggleCollapse()">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" [attr.d]="isCollapsed ? 'M13 5l7 7-7 7M5 5l7 7-7 7' : 'M11 19l-7-7 7-7M19 19l-7-7 7-7'" />
+      </svg>
+    </button>
+  </div>
+
+  <nav class="nav-menu">
+    <p class="nav-heading" *ngIf="!isCollapsed">Main Navigation</p>
+    <ul>
+      <li *ngFor="let item of navItems; trackBy: trackByPath">
+        <a [routerLink]="item.path" routerLinkActive="active-link" class="nav-item" [title]="isCollapsed ? item.label : ''">
+          <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" [attr.d]="item.icon" />
+          </svg>
+          <span *ngIf="!isCollapsed">{{ item.label }}</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="sidebar-footer" *ngIf="!isCollapsed">
+    <div class="upgrade-card card">
+      <h4>Need Help?</h4>
+      <p>Contact HR Support</p>
+      <button class="btn btn-outline" style="width: 100%; margin-top:0.5rem">Support</button>
+    </div>
+  </div>
+</div>

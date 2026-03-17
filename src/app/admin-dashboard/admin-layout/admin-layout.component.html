@@ -1,0 +1,17 @@
+<div class="layout-container" [class.sidebar-collapsed]="sidebarCollapsed">
+  <!-- Sidebar -->
+  <aside class="sidebar-wrapper glass-panel">
+    <app-sidebar [isCollapsed]="sidebarCollapsed" (toggle)="onSidebarToggle()"></app-sidebar>
+  </aside>
+
+  <!-- Main Content Area -->
+  <div class="main-content">
+    <header class="header-wrapper glass-panel">
+      <app-header></app-header>
+    </header>
+    
+    <main class="content-body">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>

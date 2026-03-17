@@ -1,0 +1,41 @@
+<div class="page-container animate-fade-in">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Interviews</h1>
+      <p class="page-subtitle">Track upcoming interviews for your department's candidates.</p>
+    </div>
+  </div>
+
+  <div class="card glass-panel">
+    <div class="schedule-header">
+      <h2 style="font-size: 1.125rem; font-weight: 600; margin-bottom: 1.5rem;">Upcoming Schedule</h2>
+    </div>
+    <div class="interview-list">
+      <ng-container *ngFor="let interview of upcomingInterviews">
+        <div class="interview-card">
+          <div class="time-block text-primary">
+            <strong>{{ interview.time }}</strong>
+            <span class="text-xs text-muted">{{ interview.duration }}</span>
+          </div>
+          
+          <div class="candidate-info">
+            <div class="font-medium text-main">{{ interview.candidate }}</div>
+            <div class="text-sm text-muted">Applying for {{ interview.role }}</div>
+          </div>
+          
+          <div class="interviewer-info">
+            <div class="text-xs text-muted">Interviewer</div>
+            <div class="text-sm text-main font-medium">{{ interview.interviewer }}</div>
+          </div>
+          
+          <div class="status-action text-right">
+             <span class="badge badge-warning mb-2 inline-block">{{ interview.status }}</span>
+             <div>
+                <a class="text-primary text-sm font-medium hover:underline cursor-pointer">Join Link</a>
+             </div>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+</div>
