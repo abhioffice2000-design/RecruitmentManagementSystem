@@ -347,84 +347,44 @@ export class RegisterComponent {
               .done((_accountResponse: any) => {
                 console.log('Step 3 done: Account created successfully');
 
-                // ── Step 4: Create Cordys User ────────────
-                const userSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+                // ── Step 4: Send Registration Email ────────────
+                const mailSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
   <SOAP:Body>
-    <CreateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
-      <User>
-        <UserName>${self.data.email}</UserName>
-        <Description>${self.data.email}</Description>
-        <Credentials allowDuplicate="true">
-          <UserIDPassword>
-            <UserID>${self.data.email}</UserID>
-            <Password>${plainPassword}</Password>
-          </UserIDPassword>
-        </Credentials>
-        <Roles>
-          <Role>Candidate_RMST1</Role>
-        </Roles>
-      </User>
-    </CreateUserInOrganization>
+    <RegistrationMailBPM xmlns="http://schemas.cordys.com/default">
+      <usermail>${self.data.email}</usermail>
+      <username>${self.data.firstName} ${self.data.lastName}</username>
+      <userpass>${plainPassword}</userpass>
+    </RegistrationMailBPM>
   </SOAP:Body>
 </SOAP:Envelope>`;
 
                 $.cordys
                   .ajax({
-                    method: 'CreateUserInOrganization',
-                    namespace: 'http://schemas.cordys.com/UserManagement/1.0/Organization',
-                    data: userSoap,
+                    method: 'RegistrationMailBPM',
+                    namespace: 'http://schemas.cordys.com/default',
+                    data: mailSoap,
                     dataType: 'xml',
                   })
-                  .done((_userResponse: any) => {
-                    console.log('Step 4 done: Cordys user created');
-                  
-                    // ── Step 5: Send Email ────────────
-
-                    const mailSoap = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body>
-    <RegistrationMailBPM xmlns="http://schemas.cordys.com/default">
-      <usermail>${self.data.email}</usermail>
-      <username>${self.data.firstName} ${self.data.lastName}</username>
-    </RegistrationMailBPM>
-  </SOAP:Body>
-</SOAP:Envelope>`;
-
-                    $.cordys
-                      .ajax({
-                        method: 'RegistrationMailBPM',
-                        namespace: 'http://schemas.cordys.com/default',
-                        data: mailSoap,
-                        dataType: 'xml',
-                      })
-                      .done((_mailResponse: any) => {
-                        console.log('Step 5 done: Email sent');
-                        self.ngZone.run(() => {
-                          self.isLoading = false;
-                          self.showToast('Registration successful! Please check your email.', 'success');
-                          setTimeout(() => {
-                            self.router.navigate(['/login']);
-                          }, 1500);
-                        });
-                      })
-                      .fail((mailError: any) => {
-                        console.error('Step 5 error (Email failed):', mailError);
-                        // ⚠️ IMPORTANT: Do NOT rollback here
-                        // User is already created everywhere
-                        self.ngZone.run(() => {
-                          self.isLoading = false;
-                          self.showToast('Registered successfully, but email failed.', 'error');
-                          setTimeout(() => {
-                            self.router.navigate(['/login']);
-                          }, 1500);
-                        });
-                      });
-                  })
-                  .fail((error: any) => {
+                  .done((_mailResponse: any) => {
+                    console.log('Step 4 done: Registration email sent');
                     self.ngZone.run(() => {
                       self.isLoading = false;
-                      console.error('Step 4 error (Cordys user creation):', error);
-                      // ⚠️ Important: DB already created, only Cordys failed
-                      self.showToast('User created in DB but failed in Cordys. Contact admin.', 'error');
+                      self.showToast('Registration successful! Please check your email.', 'success');
+                      setTimeout(() => {
+                        self.router.navigate(['/login']);
+                      }, 1500);
+                    });
+                  })
+                  .fail((mailError: any) => {
+                    console.error('Step 4 error (Email failed):', mailError);
+                    // ⚠️ IMPORTANT: Do NOT rollback here
+                    // User is already created in DB
+                    self.ngZone.run(() => {
+                      self.isLoading = false;
+                      self.showToast('Registered successfully, but email failed.', 'error');
+                      setTimeout(() => {
+                        self.router.navigate(['/login']);
+                      }, 1500);
                     });
                   });
               })
