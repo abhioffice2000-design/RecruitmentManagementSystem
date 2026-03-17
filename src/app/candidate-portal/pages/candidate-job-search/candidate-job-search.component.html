@@ -1,0 +1,111 @@
+<div class="job-search-page animate-fade-in">
+  <div class="page-header">
+    <div>
+      <h1>Explore Jobs</h1>
+      <p>Find your next opportunity from <strong>{{ totalJobs }}</strong> open positions</p>
+    </div>
+  </div>
+
+  <!-- Search & Filters -->
+  <div class="search-filters card">
+    <div class="search-row">
+      <div class="search-field main-search">
+        <i class="fa-solid fa-magnifying-glass field-icon"></i>
+        <input type="text" placeholder="Job title, skill, or keyword..." [(ngModel)]="filters.query">
+      </div>
+      <div class="search-field">
+        <i class="fa-solid fa-location-dot field-icon"></i>
+        <input type="text" placeholder="Location..." [(ngModel)]="filters.location">
+      </div>
+      <button class="btn btn-primary" (click)="search()">
+        <i class="fa-solid fa-magnifying-glass"></i> Search Jobs
+      </button>
+    </div>
+    <div class="filter-row">
+      <div class="filter-group">
+        <label>Department</label>
+        <select [(ngModel)]="filters.department" (change)="search()">
+          <option value="">All Departments</option>
+          <option *ngFor="let d of departments" [value]="d">{{ d }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Experience</label>
+        <select [(ngModel)]="filters.experienceLevel" (change)="search()">
+          <option value="">All Levels</option>
+          <option *ngFor="let l of experienceLevels" [value]="l">{{ l }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Work Type</label>
+        <select [(ngModel)]="filters.type" (change)="search()">
+          <option value="">All Types</option>
+          <option value="Remote">Remote</option>
+          <option value="Hybrid">Hybrid</option>
+          <option value="Onsite">Onsite</option>
+        </select>
+      </div>
+      <button class="clear-filters" (click)="clearFilters()">
+        <i class="fa-solid fa-filter-circle-xmark"></i> Clear Filters
+      </button>
+    </div>
+  </div>
+
+  <!-- Results Header -->
+  <div class="results-header">
+    <span class="results-count">{{ filteredJobs.length }} jobs found</span>
+    <div class="sort-group">
+      <span>Sort by:</span>
+      <select [(ngModel)]="sortBy" (change)="sort()">
+        <option value="latest">Latest</option>
+        <option value="applicants">Most Applied</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Job List -->
+  <div class="jobs-list">
+    <div *ngFor="let job of filteredJobs; let i = index" class="job-list-card card card-hover"
+         [style.animation-delay]="i * 0.05 + 's'">
+      <div class="job-list-left">
+        <div class="company-logo">{{ job.company[0] }}</div>
+        <div class="job-info">
+          <h3 class="job-title" [routerLink]="['/jobs', job.id]">{{ job.title }}</h3>
+          <p class="job-company">{{ job.company }}</p>
+          <div class="job-meta">
+            <span class="badge" [ngClass]="'badge-' + job.type.toLowerCase()">{{ job.type }}</span>
+            <span class="meta-item"><i class="fa-solid fa-location-dot"></i> {{ job.location }}</span>
+            <span class="meta-item"><i class="fa-solid fa-briefcase"></i> {{ job.experienceLevel }}</span>
+            <span class="meta-item"><i class="fa-solid fa-money-bill-wave"></i> {{ job.salary }}</span>
+          </div>
+          <div class="job-skills">
+            <span *ngFor="let skill of job.skills.slice(0,4)" class="skill-tag">{{ skill }}</span>
+          </div>
+          <p class="job-desc">{{ job.description | slice:0:160 }}...</p>
+        </div>
+      </div>
+      <div class="job-list-right">
+        <div class="job-actions">
+          <button class="save-btn" (click)="toggleSave(job.id)" [class.saved]="job.saved"
+                  [title]="job.saved ? 'Unsave' : 'Save Job'">
+            <i [ngClass]="job.saved ? 'fa-solid fa-heart' : 'fa-regular fa-heart'"></i>
+          </button>
+          <button class="btn btn-primary btn-sm" [routerLink]="['/jobs', job.id]">
+            <i class="fa-solid fa-arrow-right"></i> View & Apply
+          </button>
+        </div>
+        <div class="job-posted">
+          <span><i class="fa-solid fa-users"></i> {{ job.applicants }} applicants</span>
+          <span>Posted {{ getTimeAgo(job.postedDate) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="filteredJobs.length === 0" class="empty-state card">
+      <i class="fa-solid fa-magnifying-glass empty-icon"></i>
+      <h3>No jobs match your criteria</h3>
+      <p>Try adjusting your filters or search terms</p>
+      <button class="btn btn-outline" (click)="clearFilters()">Clear All Filters</button>
+    </div>
+  </div>
+</div>

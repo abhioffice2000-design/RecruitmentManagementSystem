@@ -1,0 +1,130 @@
+<div class="apply-page animate-fade-in" *ngIf="job && !submitted">
+  <div class="page-header">
+    <button class="btn btn-secondary btn-sm back-btn" (click)="goBack()">
+      <i class="fa-solid fa-arrow-left"></i> Back to Job
+    </button>
+    <h1>Apply for Position</h1>
+    <p>Complete the form below to submit your application</p>
+  </div>
+
+  <div class="apply-layout">
+    <!-- Form Section -->
+    <div class="apply-form-section">
+      <!-- Job Summary Card -->
+      <div class="job-summary card">
+        <div class="job-summary-inner">
+          <div class="company-logo">{{ job.company[0] }}</div>
+          <div class="job-summary-info">
+            <h3>{{ job.title }}</h3>
+            <p>{{ job.company }} <i class="fa-solid fa-circle-check verified-icon"></i></p>
+            <div class="summary-tags">
+              <span class="badge" [ngClass]="'badge-' + job.type.toLowerCase()">{{ job.type }}</span>
+              <span><i class="fa-solid fa-location-dot"></i> {{ job.location }}</span>
+              <span><i class="fa-solid fa-briefcase"></i> {{ job.experienceLevel }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Application Form -->
+      <div class="form-card card">
+        <h2><i class="fa-solid fa-file-pen"></i> Application Details</h2>
+
+        <div class="form-group">
+          <label>Resume / CV <span class="required">*</span></label>
+          <div class="upload-area" [class.has-file]="resumeFileName">
+            <label class="upload-label">
+              <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+              <span class="upload-text" *ngIf="!resumeFileName">
+                <strong>Click to upload</strong> or drag and drop<br>
+                <small>PDF, DOC, DOCX (Max 5MB)</small>
+              </span>
+              <span class="upload-text" *ngIf="resumeFileName">
+                <i class="fa-solid fa-file-pdf"></i>
+                <strong>{{ resumeFileName }}</strong><br>
+                <small>Click to change file</small>
+              </span>
+              <input type="file" hidden accept=".pdf,.doc,.docx" (change)="onFileSelect($event)">
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Cover Letter</label>
+          <textarea rows="5" placeholder="Tell us why you're a great fit for this role..."
+                    [(ngModel)]="formData.coverLetter"></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Expected Salary</label>
+            <input type="text" placeholder="e.g. 15,00,000" [(ngModel)]="formData.expectedSalary">
+          </div>
+          <div class="form-group">
+            <label>Notice Period</label>
+            <select [(ngModel)]="formData.noticePeriod">
+              <option value="">Select notice period</option>
+              <option value="Immediate">Immediate</option>
+              <option value="15 days">15 Days</option>
+              <option value="30 days">30 Days</option>
+              <option value="60 days">60 Days</option>
+              <option value="90 days">90 Days</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Why do you want to join {{ job.company }}?</label>
+          <textarea rows="4" placeholder="Share your motivation..."
+                    [(ngModel)]="formData.whyJoin"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-secondary" (click)="goBack()">Cancel</button>
+          <button class="btn btn-primary btn-lg" (click)="submitApplication()">
+            <i class="fa-solid fa-paper-plane"></i> Submit Application
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sidebar Info -->
+    <div class="apply-sidebar">
+      <div class="info-card card">
+        <h4><i class="fa-solid fa-circle-info"></i> Application Tips</h4>
+        <ul class="tips-list">
+          <li><i class="fa-solid fa-check"></i> Tailor your resume to match the job requirements</li>
+          <li><i class="fa-solid fa-check"></i> Highlight relevant skills and experience</li>
+          <li><i class="fa-solid fa-check"></i> Write a personalized cover letter</li>
+          <li><i class="fa-solid fa-check"></i> Double-check for spelling and grammar</li>
+          <li><i class="fa-solid fa-check"></i> Ensure your contact information is up to date</li>
+        </ul>
+      </div>
+      <div class="info-card card">
+        <h4><i class="fa-solid fa-shield-halved"></i> Privacy Notice</h4>
+        <p>Your application data is securely stored and only shared with the hiring team for this position.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Success State -->
+<div class="apply-success-page animate-fade-in" *ngIf="submitted">
+  <div class="success-card card">
+    <div class="success-icon-wrap">
+      <i class="fa-solid fa-circle-check"></i>
+    </div>
+    <h2>Application Submitted!</h2>
+    <p class="success-subtitle" *ngIf="job">Your application for <strong>{{ job.title }}</strong> at
+      <strong>{{ job.company }}</strong> has been successfully submitted.</p>
+    <p class="success-info">The recruiter will review your application and get back to you shortly.</p>
+    <div class="success-actions">
+      <button class="btn btn-primary" routerLink="/applications">
+        <i class="fa-solid fa-clipboard-list"></i> View My Applications
+      </button>
+      <button class="btn btn-secondary" routerLink="/jobs">
+        <i class="fa-solid fa-magnifying-glass"></i> Browse More Jobs
+      </button>
+    </div>
+  </div>
+</div>

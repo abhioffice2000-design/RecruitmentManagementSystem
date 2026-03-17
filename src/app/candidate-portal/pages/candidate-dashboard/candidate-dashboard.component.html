@@ -1,0 +1,153 @@
+<div class="dashboard animate-fade-in">
+  <!-- Welcome Section -->
+  <div class="welcome-section">
+    <div class="welcome-text">
+      <h1>Welcome back, {{ user.firstName }}!</h1>
+      <p>Here's what's happening with your applications</p>
+    </div>
+    <div class="welcome-date">
+      <i class="fa-regular fa-calendar"></i>
+      <span>{{ today }}</span>
+    </div>
+  </div>
+
+  <!-- Application Status Cards -->
+  <div class="status-cards">
+    <div class="stat-card" *ngFor="let stat of statusCards; let i = index"
+         [style.animation-delay]="i * 0.08 + 's'">
+      <div class="stat-icon" [style.background]="stat.bg" [style.color]="stat.color">
+        <i [ngClass]="stat.icon"></i>
+      </div>
+      <div class="stat-info">
+        <span class="stat-value">{{ stat.value }}</span>
+        <span class="stat-label">{{ stat.label }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Grid -->
+  <div class="dashboard-grid">
+    <!-- Profile Completion -->
+    <div class="card profile-card">
+      <div class="card-body">
+        <div class="profile-header">
+          <div class="profile-avatar">{{ userInitials }}</div>
+          <div class="profile-info">
+            <h3>{{ user.firstName }} {{ user.lastName }}</h3>
+            <p>{{ user.title }}</p>
+          </div>
+        </div>
+        <div class="completion-section">
+          <div class="completion-header">
+            <span>Profile Completion</span>
+            <span class="completion-pct">{{ user.profileCompletion }}%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" [style.width.%]="user.profileCompletion"></div>
+          </div>
+          <div class="completion-tips">
+            <div class="tip" *ngFor="let tip of profileTips">
+              <i [ngClass]="tip.done ? 'fa-solid fa-circle-check tip-done' : 'fa-regular fa-circle tip-pending'"></i>
+              <span class="tip-text" [class.done]="tip.done">{{ tip.text }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming Interviews -->
+    <div class="card interviews-card">
+      <div class="section-title">
+        <span><i class="fa-solid fa-calendar-check"></i> Upcoming Interviews</span>
+        <span class="view-all" routerLink="/applications">View All</span>
+      </div>
+      <div class="card-body">
+        <div *ngIf="interviews.length === 0" class="empty-state">
+          <i class="fa-regular fa-calendar empty-icon"></i>
+          <h3>No Upcoming Interviews</h3>
+          <p>You don't have any interviews scheduled.</p>
+        </div>
+        <div *ngFor="let interview of interviews" class="interview-item">
+          <div class="interview-date-box">
+            <span class="interview-month">{{ getMonth(interview.date) }}</span>
+            <span class="interview-day">{{ getDay(interview.date) }}</span>
+          </div>
+          <div class="interview-details">
+            <span class="interview-title">{{ interview.jobTitle }}</span>
+            <span class="interview-company">{{ interview.company }}</span>
+            <div class="interview-meta">
+              <span class="meta-tag"><i class="fa-regular fa-clock"></i> {{ interview.time }}</span>
+              <span class="meta-tag"><i class="fa-solid fa-bullseye"></i> {{ interview.type }}</span>
+            </div>
+          </div>
+          <a *ngIf="interview.meetingLink" class="join-btn btn btn-primary btn-sm"
+             [href]="interview.meetingLink" target="_blank">
+            <i class="fa-solid fa-video"></i> Join
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recommended Jobs -->
+    <div class="card recommended-card full-width">
+      <div class="section-title">
+        <span><i class="fa-solid fa-star"></i> Recommended for You</span>
+        <span class="view-all" routerLink="/jobs">Browse All Jobs</span>
+      </div>
+      <div class="card-body">
+        <div class="jobs-grid">
+          <div *ngFor="let job of recommendedJobs; let i = index" class="job-card card card-hover"
+               [style.animation-delay]="i * 0.06 + 's'">
+            <div class="job-card-header">
+              <div class="company-logo">{{ job.company[0] }}</div>
+              <button class="save-btn" (click)="toggleSave(job.id)" [class.saved]="job.saved">
+                <i [ngClass]="job.saved ? 'fa-solid fa-bookmark' : 'fa-regular fa-bookmark'"></i>
+              </button>
+            </div>
+            <h4 class="job-title">{{ job.title }}</h4>
+            <p class="job-company">{{ job.company }}</p>
+            <div class="job-tags">
+              <span class="badge" [ngClass]="'badge-' + job.type.toLowerCase()">{{ job.type }}</span>
+              <span class="job-location"><i class="fa-solid fa-location-dot"></i> {{ job.location }}</span>
+            </div>
+            <div class="job-salary"><i class="fa-solid fa-indian-rupee-sign"></i> {{ job.salary }}</div>
+            <div class="job-card-footer">
+              <span class="applicant-count"><i class="fa-solid fa-users"></i> {{ job.applicants }} applicants</span>
+              <button class="btn btn-primary btn-sm" [routerLink]="['/jobs', job.id]">View Details</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Applications -->
+    <div class="card recent-apps-card full-width">
+      <div class="section-title">
+        <span><i class="fa-solid fa-clipboard-list"></i> Recent Applications</span>
+        <span class="view-all" routerLink="/applications">View All</span>
+      </div>
+      <div class="card-body">
+        <div class="applications-table">
+          <div class="table-header">
+            <span class="col-job">Job Title</span>
+            <span class="col-company">Company</span>
+            <span class="col-date">Applied</span>
+            <span class="col-status">Status</span>
+            <span class="col-action">Action</span>
+          </div>
+          <div *ngFor="let app of recentApplications" class="table-row">
+            <span class="col-job"><strong>{{ app.jobTitle }}</strong></span>
+            <span class="col-company">{{ app.company }}</span>
+            <span class="col-date">{{ app.appliedDate }}</span>
+            <span class="col-status">
+              <span class="badge" [ngClass]="getStatusBadge(app.status)">{{ app.status }}</span>
+            </span>
+            <span class="col-action">
+              <button class="btn btn-secondary btn-sm" routerLink="/applications">Details</button>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
