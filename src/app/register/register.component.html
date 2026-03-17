@@ -15,25 +15,45 @@
         </div>
 
         <form (ngSubmit)="onRegister()" class="register-form">
-          <!-- Two-column row: Full Name & Email -->
+          <!-- Two-column row: First Name & Last Name -->
           <div class="form-row">
             <div class="form-group">
-              <label for="fullName">Full Name</label>
+              <label for="firstName">First Name</label>
               <div class="input-wrapper">
                 <i class="fas fa-user input-icon"></i>
                 <input
                   type="text"
-                  id="fullName"
-                  name="fullName"
-                  [(ngModel)]="data.fullName"
-                  placeholder="Enter your full name"
+                  id="firstName"
+                  name="firstName"
+                  [(ngModel)]="data.firstName"
+                  placeholder="Enter your first name"
                   [disabled]="isLoading"
-                  (focus)="clearError('fullName')"
+                  (focus)="clearError('firstName')"
                 />
               </div>
-              <span class="field-error" *ngIf="errors['fullName']">{{ errors['fullName'] }}</span>
+              <span class="field-error" *ngIf="errors['firstName']">{{ errors['firstName'] }}</span>
             </div>
 
+            <div class="form-group">
+              <label for="lastName">Last Name</label>
+              <div class="input-wrapper">
+                <i class="fas fa-user input-icon"></i>
+                <input
+                  type="text"
+                  id="lastName"
+                  name="lastName"
+                  [(ngModel)]="data.lastName"
+                  placeholder="Enter your last name"
+                  [disabled]="isLoading"
+                  (focus)="clearError('lastName')"
+                />
+              </div>
+              <span class="field-error" *ngIf="errors['lastName']">{{ errors['lastName'] }}</span>
+            </div>
+          </div>
+
+          <!-- Two-column row: Email & Phone Number -->
+          <div class="form-row">
             <div class="form-group">
               <label for="email">Email Address</label>
               <div class="input-wrapper">
@@ -46,14 +66,12 @@
                   placeholder="Enter your email"
                   [disabled]="isLoading"
                   (focus)="clearError('email')"
+                  (input)="validateEmail()"
                 />
               </div>
               <span class="field-error" *ngIf="errors['email']">{{ errors['email'] }}</span>
             </div>
-          </div>
 
-          <!-- Phone Number & DOB -->
-          <div class="form-row">
             <div class="form-group">
               <label for="phone">Phone Number</label>
               <div class="input-wrapper">
@@ -63,28 +81,13 @@
                   id="phone"
                   name="phone"
                   [(ngModel)]="data.phone"
-                  placeholder="Enter your phone"
+                  placeholder="Enter your phone number"
                   [disabled]="isLoading"
                   (focus)="clearError('phone')"
+                  (input)="validatePhone()"
                 />
               </div>
               <span class="field-error" *ngIf="errors['phone']">{{ errors['phone'] }}</span>
-            </div>
-
-            <div class="form-group">
-              <label for="dob">Date of Birth</label>
-              <div class="input-wrapper">
-                <i class="fas fa-calendar-alt input-icon"></i>
-                <input
-                  type="date"
-                  id="dob"
-                  name="dob"
-                  [(ngModel)]="data.dob"
-                  [disabled]="isLoading"
-                  (focus)="clearError('dob')"
-                />
-              </div>
-              <span class="field-error" *ngIf="errors['dob']">{{ errors['dob'] }}</span>
             </div>
           </div>
 
@@ -103,6 +106,7 @@
                   autocomplete="new-password"
                   [disabled]="isLoading"
                   (focus)="clearError('password')"
+                  (input)="validatePassword()"
                 />
                 <button type="button" class="toggle-password" (click)="togglePassword()" tabindex="-1">
                   <i [class]="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
@@ -124,6 +128,7 @@
                   autocomplete="new-password"
                   [disabled]="isLoading"
                   (focus)="clearError('confirmPassword')"
+                  (input)="validateConfirmPassword()"
                 />
                 <button type="button" class="toggle-password" (click)="toggleConfirmPassword()" tabindex="-1">
                   <i [class]="showConfirmPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
