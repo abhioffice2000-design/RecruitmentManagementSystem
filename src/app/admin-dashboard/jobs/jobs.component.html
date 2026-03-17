@@ -1,0 +1,92 @@
+<div class="page-container animate-fade-in">
+  
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Jobs &amp; Postings</h1>
+      <p class="page-subtitle">Create and manage your open positions.</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn outline-btn mr-2" style="background:#fff">
+        Export Data
+      </button>
+      <button class="btn btn-primary glass-panel">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px; height:16px; margin-right: 0.5rem">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        New Job
+      </button>
+    </div>
+  </div>
+
+  <div class="job-filters mb-4">
+    <div class="tabs">
+      <button class="tab active">All Jobs (6)</button>
+      <button class="tab">Active (4)</button>
+      <button class="tab">Closed (1)</button>
+      <button class="tab">Drafts (1)</button>
+    </div>
+    
+    <div class="search-input-wrap">
+      <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <input type="text" placeholder="Search jobs..." class="filter-input" />
+    </div>
+  </div>
+
+  <div class="grid grid-cols-3 jobs-grid">
+    <ng-container *ngFor="let job of jobs">
+      <div class="card job-card glass-panel" [class.job-closed]="job.status === 'Closed'" [class.job-draft]="job.status === 'Draft'">
+        <div class="job-header">
+          <span class="badge" 
+                [class.badge-success]="job.status === 'Active'"
+                [class.badge-danger]="job.status === 'Closed'"
+                [class.badge-neutral]="job.status === 'Draft'">
+            {{ job.status }}
+          </span>
+          <button class="btn-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </button>
+        </div>
+        
+        <div class="job-info mt-2">
+          <h3>{{ job.title }}</h3>
+          <p class="job-dept">{{ job.dept }} &bull; {{ job.type }}</p>
+          
+          <div class="job-meta mt-4">
+            <div class="meta-item">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>{{ job.location }}</span>
+            </div>
+            
+            <div class="meta-item ml-3 text-primary" *ngIf="job.status === 'Active'">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{{ job.daysLeft }} days left</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="job-footer mt-4">
+          <div class="applicants-count">
+            <strong>{{ job.applicants }}</strong> 
+            <span class="text-muted">Applicants</span>
+          </div>
+          
+          <div class="applicant-avatars">
+            <div class="mini-avatar">A</div>
+            <div class="mini-avatar bg-alt">M</div>
+            <div class="mini-avatar bg-gray">+{{ job.applicants > 2 ? job.applicants - 2 : 0 }}</div>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+
+</div>
