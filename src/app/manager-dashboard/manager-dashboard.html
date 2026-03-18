@@ -3,7 +3,7 @@
   <div class="page-header">
     <div>
       <h1 class="page-title">Manager Dashboard</h1>
-      <p class="page-subtitle">Overview of team hiring progress and pending approvals.</p>
+      <p class="page-subtitle">Review and manage job posting approvals.</p>
     </div>
   </div>
 
@@ -24,72 +24,129 @@
     </ng-container>
   </div>
 
-  <div class="dashboard-grid">
-    <!-- Pending Approvals from HR -->
-    <div class="dashboard-section glass-panel">
-      <div class="section-header">
-        <h2>Job Posting Approvals</h2>
-        <span class="badge badge-warning">{{ jobApprovals.length }} Pending</span>
-      </div>
-      <p class="text-muted text-sm mb-4">Review and approve new job requisitions requested by HR.</p>
-      
-      <div class="approval-list">
-        <div class="empty-state" *ngIf="jobApprovals.length === 0">
-          <p>No pending approvals at this time.</p>
-        </div>
-        <ng-container *ngFor="let req of jobApprovals">
-          <div class="approval-card">
-            <div class="card-details">
-              <div class="req-id">{{ req.id }}</div>
-              <h4>{{ req.title }}</h4>
-              <div class="req-meta">
-                <span>{{ req.department }}</span> &bull; <span>Requested by: {{ req.requestedBy }}</span> &bull; <span class="text-muted">{{ req.date }}</span>
-              </div>
-            </div>
-            <div class="card-actions">
-              <button class="btn btn-icon btn-approve" (click)="approveRequest(req.id)" title="Approve">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
-              <button class="btn btn-icon btn-reject" (click)="rejectRequest(req.id)" title="Reject">
-                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </ng-container>
-      </div>
+  <!-- Pending Approvals Section -->
+  <div class="dashboard-section glass-panel">
+    <div class="section-header">
+      <h2>Job Posting Approvals</h2>
+      <span class="badge badge-warning" *ngIf="pendingApprovals.length > 0">
+        {{ pendingApprovals.length }} Pending
+      </span>
+    </div>
+    <p class="text-muted text-sm mb-4">Review and approve/reject job requisitions submitted by HR.</p>
+
+    <!-- Loading -->
+    <div class="loading-state" *ngIf="isLoading">
+      <div class="spinner"></div>
+      <p>Loading approvals...</p>
     </div>
 
-    <!-- Upcoming Interviews & Reviews -->
-    <div class="dashboard-section glass-panel">
-      <div class="section-header">
-        <h2>Candidates to Review</h2>
-        <a href="javascript:void(0)" class="text-primary text-sm font-medium">View All</a>
-      </div>
-      
-      <div class="interview-list mt-4">
-        <ng-container *ngFor="let candidate of candidatesToReview">
-          <div class="interview-item">
-            <div class="avatar-lg">{{ candidate.name.charAt(0) }}</div>
-            <div class="item-details">
-              <h4>{{ candidate.name }}</h4>
-              <p class="text-sm text-muted">{{ candidate.position }}</p>
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="!isLoading && pendingApprovals.length === 0">
+      <p>No pending approvals at this time.</p>
+    </div>
+
+    <!-- Approval Cards -->
+    <div class="approval-list" *ngIf="!isLoading">
+      <ng-container *ngFor="let req of pendingApprovals">
+        <div class="approval-card">
+          <div class="card-details">
+            <div class="req-id">{{ req.entity_id }}</div>
+            <h4>{{ req.job_title || req.entity_id }}</h4>
+            <div class="req-meta">
+              <span *ngIf="req.department_name">{{ req.department_name }}</span>
+              <span *ngIf="req.department_name"> &bull; </span>
+              <span>Requested by: {{ req.requester_name || req.requested_by }}</span>
+              <span> &bull; </span>
+              <span class="text-muted">{{ formatDate(req.requested_at) }}</span>
             </div>
-            <div class="item-status text-right">
-              <div class="text-sm font-medium">{{ candidate.stage }}</div>
-              <div class="text-xs text-muted">{{ candidate.date }}</div>
-            </div>
+            <p class="req-comment" *ngIf="req.comments">{{ req.comments }}</p>
           </div>
-        </ng-container>
+          <div class="card-actions">
+            <button class="btn btn-icon btn-approve" (click)="openApproveModal(req)" title="Approve">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </button>
+            <button class="btn btn-icon btn-reject" (click)="openRejectModal(req)" title="Reject">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+
+  <!-- Recent Decisions (Approved/Rejected) -->
+  <div class="dashboard-section glass-panel mt-6" *ngIf="!isLoading && allApprovals.length > 0">
+    <div class="section-header">
+      <h2>Recent Decisions</h2>
+    </div>
+    <div class="decisions-list">
+      <ng-container *ngFor="let a of allApprovals">
+        <div class="decision-item" *ngIf="a.status !== 'PENDING'">
+          <div class="decision-status">
+            <span class="status-dot" [class.approved]="a.status === 'APPROVED'" [class.rejected]="a.status === 'REJECTED'"></span>
+          </div>
+          <div class="decision-details">
+            <h4>{{ a.job_title || a.entity_id }}</h4>
+            <span class="text-sm text-muted">
+              {{ a.status === 'APPROVED' ? 'Approved' : 'Rejected' }} on {{ formatDate(a.requested_at) }}
+            </span>
+          </div>
+          <span class="decision-badge"
+                [class.badge-success]="a.status === 'APPROVED'"
+                [class.badge-danger]="a.status === 'REJECTED'">
+            {{ a.status }}
+          </span>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+
+  <!-- ===== ACTION MODAL ===== -->
+  <div class="modal-overlay" *ngIf="showActionModal" (click)="closeActionModal()">
+    <div class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header" [class.approve-header]="actionType === 'APPROVED'" [class.reject-header]="actionType === 'REJECTED'">
+        <h3>{{ actionType === 'APPROVED' ? '✅ Approve Requisition' : '❌ Reject Requisition' }}</h3>
+        <button class="modal-close" (click)="closeActionModal()">✕</button>
       </div>
-      
-      <div class="mt-6">
-        <button class="btn outline-btn w-full">Go to Interview Schedule</button>
+      <div class="modal-body" *ngIf="actionApproval">
+        <div class="confirm-info">
+          <p>You are about to <strong>{{ actionType === 'APPROVED' ? 'approve' : 'reject' }}</strong> the following requisition:</p>
+          <div class="confirm-detail">
+            <span class="req-id">{{ actionApproval.entity_id }}</span>
+            <h4>{{ actionApproval.job_title || actionApproval.entity_id }}</h4>
+            <span class="text-sm text-muted" *ngIf="actionApproval.department_name">{{ actionApproval.department_name }}</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>{{ actionType === 'REJECTED' ? 'Reason for Rejection *' : 'Comments (optional)' }}</label>
+          <textarea [(ngModel)]="actionComments" rows="3" class="form-input"
+                    [placeholder]="actionType === 'REJECTED' ? 'Please provide the reason for rejection...' : 'Add any comments...'"></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-modal-cancel" (click)="closeActionModal()">Cancel</button>
+          <button class="btn-modal-confirm"
+                  [class.confirm-approve]="actionType === 'APPROVED'"
+                  [class.confirm-reject]="actionType === 'REJECTED'"
+                  (click)="confirmAction()" [disabled]="isActioning">
+            {{ isActioning ? 'Processing...' : (actionType === 'APPROVED' ? 'Confirm Approve' : 'Confirm Reject') }}
+          </button>
+        </div>
       </div>
     </div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div class="toast-notification" *ngIf="showToastFlag"
+       [class.toast-success]="toastType === 'success'"
+       [class.toast-error]="toastType === 'error'">
+    <span class="toast-icon">{{ toastType === 'success' ? '✅' : '❌' }}</span>
+    <span class="toast-text">{{ toastMessage }}</span>
   </div>
 
 </div>

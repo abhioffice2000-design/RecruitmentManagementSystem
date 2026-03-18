@@ -1,64 +1,54 @@
 import { Component, OnInit } from '@angular/core';
-import { MockDataService } from '../../services/mock-data.service';
-import { Job, Application, Interview, UserProfile } from '../../models/job.model';
+import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
+import { SoapService } from '../../../services/soap.service';
 
 @Component({
   selector: 'app-candidate-dashboard',
-  templateUrl: './candidate-dashboard.component.html',
-  styleUrls: ['./candidate-dashboard.component.scss']
+  standalone: true,
+  imports: [CommonModule],
+  template: `
+    <div class="dash-wrap animate-fade-in">
+      <div class="page-header">
+        <h1>Welcome Back 👋</h1>
+        <p>Track your applications and find new opportunities.</p>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon">📄</div>
+          <div class="stat-body"><div class="stat-val">{{ totalApplications }}</div><div class="stat-label">Applications</div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📋</div>
+          <div class="stat-body"><div class="stat-val">{{ openJobs }}</div><div class="stat-label">Open Positions</div></div>
+        </div>
+      </div>
+      <div class="quick-actions">
+        <button class="action-btn" (click)="router.navigate(['/candidate/jobs'])">🔍 Browse Jobs</button>
+        <button class="action-btn" (click)="router.navigate(['/candidate/applications'])">📊 My Applications</button>
+      </div>
+    </div>
+  `,
+  styles: [`
+    .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .page-header { margin-bottom: 24px; h1 { margin: 0 0 4px; font-size: 24px; color: #1e293b; } p { color: #64748b; margin: 0; } }
+    .stats-row { display: flex; gap: 16px; margin-bottom: 24px; }
+    .stat-card { flex: 1; display: flex; align-items: center; gap: 16px; background: #fff; padding: 20px 24px; border-radius: 12px; border: 1px solid #e2e8f0; }
+    .stat-icon { font-size: 32px; }
+    .stat-val { font-size: 28px; font-weight: 700; color: #1e293b; }
+    .stat-label { font-size: 13px; color: #64748b; }
+    .quick-actions { display: flex; gap: 12px; }
+    .action-btn { padding: 14px 24px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; color: #475569; &:hover { border-color: #2563eb; color: #2563eb; } }
+  `]
 })
 export class CandidateDashboardComponent implements OnInit {
-  user!: UserProfile;
-  userInitials = '';
-  today = '';
-  interviews: Interview[] = [];
-  recommendedJobs: Job[] = [];
-  recentApplications: Application[] = [];
-  statusCards: any[] = [];
-
-  profileTips = [
-    { text: 'Upload resume', done: true },
-    { text: 'Add work experience', done: true },
-    { text: 'Add skills', done: true },
-    { text: 'Add LinkedIn profile', done: true },
-    { text: 'Add certifications', done: false },
-    { text: 'Add portfolio link', done: false }
-  ];
-
-  constructor(private dataService: MockDataService) {}
-
-  ngOnInit() {
-    this.user = this.dataService.getUser();
-    this.userInitials = this.user.firstName[0] + this.user.lastName[0];
-    this.today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    this.interviews = this.dataService.getInterviews();
-    this.recommendedJobs = this.dataService.getJobs().slice(0, 3);
-    this.recentApplications = this.dataService.getApplications().slice(0, 4);
-
-    const stats = this.dataService.getApplicationStats();
-    this.statusCards = [
-      { icon: 'fa-solid fa-paper-plane', label: 'Applied', value: stats.applied, bg: 'var(--info-bg)', color: 'var(--info)' },
-      { icon: 'fa-solid fa-magnifying-glass', label: 'Under Review', value: stats.screening, bg: 'var(--warning-bg)', color: 'var(--warning)' },
-      { icon: 'fa-solid fa-microphone', label: 'Interview', value: stats.interview, bg: '#E0E7FF', color: 'var(--primary)' },
-      { icon: 'fa-solid fa-gift', label: 'Offer', value: stats.offer, bg: 'var(--success-bg)', color: 'var(--success)' },
-      { icon: 'fa-solid fa-circle-xmark', label: 'Rejected', value: stats.rejected, bg: 'var(--danger-bg)', color: 'var(--danger)' }
-    ];
-  }
-
-  getMonth(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short' });
-  }
-
-  getDay(dateStr: string): string {
-    return new Date(dateStr).getDate().toString();
-  }
-
-  toggleSave(jobId: number) {
-    this.dataService.toggleSaveJob(jobId);
-    this.recommendedJobs = this.dataService.getJobs().slice(0, 3);
-  }
-
-  getStatusBadge(status: string): string {
-    return 'badge-' + status.toLowerCase();
+  totalApplications = 0;
+  openJobs = 0;
+  constructor(private soap: SoapService, public router: Router) {}
+  ngOnInit(): void {
+    this.soap.getJobRequisitions().then(jobs => {
+      this.openJobs = jobs.filter(j => (j['status'] || '').toUpperCase() === 'APPROVED').length;
+    }).catch(() => {});
   }
 }

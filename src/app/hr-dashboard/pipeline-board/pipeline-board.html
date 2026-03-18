@@ -1,0 +1,118 @@
+<div class="dashboard-content">
+  <div class="header">
+    <h2>Pipeline Board</h2>
+    <div class="user-info"><span class="icon">🔔</span></div>
+  </div>
+
+  <!-- Job Selector -->
+  <div class="job-selector-bar">
+    <label>Select Job:</label>
+    <select [(ngModel)]="selectedRequisitionId" (ngModelChange)="onJobChange()" class="job-select">
+      <option value="">-- Choose a Job --</option>
+      <option *ngFor="let j of jobs" [value]="j.requisition_id">
+        {{ j.title }} — {{ j.department_name }}
+      </option>
+    </select>
+    <span class="candidate-count" *ngIf="cards.length > 0">
+      {{ cards.length }} candidate{{ cards.length !== 1 ? 's' : '' }}
+    </span>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-state" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <p>Loading pipeline...</p>
+  </div>
+
+  <!-- No Job Selected -->
+  <div class="empty-state" *ngIf="!isLoading && !selectedRequisitionId">
+    <div class="empty-icon">📋</div>
+    <h3>Select a Job</h3>
+    <p>Choose a job from the dropdown above to view its candidate pipeline.</p>
+  </div>
+
+  <!-- No Candidates -->
+  <div class="empty-state" *ngIf="!isLoading && selectedRequisitionId && cards.length === 0">
+    <div class="empty-icon">👥</div>
+    <h3>No Candidates Yet</h3>
+    <p>No applications have been submitted for this position.</p>
+  </div>
+
+  <!-- Kanban Board -->
+  <div class="kanban-board" *ngIf="!isLoading && selectedRequisitionId && cards.length > 0">
+
+    <!-- Unstaged Column -->
+    <div class="kanban-column unstaged"
+         *ngIf="getUnstagedCards().length > 0"
+         (dragover)="onDragOver($event)"
+         (dragenter)="onDragEnter($event)"
+         (dragleave)="onDragLeave($event)"
+         (drop)="onDrop($event, '')">
+      <div class="column-header">
+        <h4>New / Unassigned</h4>
+        <span class="count-badge">{{ getUnstagedCards().length }}</span>
+      </div>
+      <div class="column-body">
+        <div class="kanban-card"
+             *ngFor="let card of getUnstagedCards()"
+             draggable="true"
+             (dragstart)="onDragStart($event, card)">
+          <div class="card-header-row">
+            <div class="avatar">{{ getInitials(card.candidate_name) }}</div>
+            <div class="card-info">
+              <span class="card-name">{{ card.candidate_name }}</span>
+              <span class="card-email">{{ card.candidate_email }}</span>
+            </div>
+          </div>
+          <div class="card-meta">
+            <span class="source-badge">{{ card.source || 'Direct' }}</span>
+            <span class="card-date">{{ formatDate(card.applied_at) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stage Columns -->
+    <div class="kanban-column"
+         *ngFor="let stage of stages"
+         (dragover)="onDragOver($event)"
+         (dragenter)="onDragEnter($event)"
+         (dragleave)="onDragLeave($event)"
+         (drop)="onDrop($event, stage.stage_id)">
+      <div class="column-header">
+        <h4>{{ stage.stage_name }}</h4>
+        <span class="count-badge">{{ getCardsForStage(stage.stage_id).length }}</span>
+      </div>
+      <div class="column-body">
+        <div class="kanban-card"
+             *ngFor="let card of getCardsForStage(stage.stage_id)"
+             draggable="true"
+             (dragstart)="onDragStart($event, card)">
+          <div class="card-header-row">
+            <div class="avatar">{{ getInitials(card.candidate_name) }}</div>
+            <div class="card-info">
+              <span class="card-name">{{ card.candidate_name }}</span>
+              <span class="card-email">{{ card.candidate_email }}</span>
+            </div>
+          </div>
+          <div class="card-meta">
+            <span class="source-badge">{{ card.source || 'Direct' }}</span>
+            <span class="card-date">{{ formatDate(card.applied_at) }}</span>
+          </div>
+        </div>
+
+        <div class="drop-placeholder" *ngIf="getCardsForStage(stage.stage_id).length === 0">
+          <p>Drop candidates here</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-notification" *ngIf="showToastFlag"
+       [class.toast-success]="toastType === 'success'"
+       [class.toast-error]="toastType === 'error'">
+    <span class="toast-icon">{{ toastType === 'success' ? '✅' : '❌' }}</span>
+    <span>{{ toastMessage }}</span>
+  </div>
+</div>
