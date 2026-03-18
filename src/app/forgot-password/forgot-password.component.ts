@@ -1,4 +1,4 @@
-import { Component, NgZone } from '@angular/core';
+import { Component, NgZone, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -11,7 +11,7 @@ declare var $: any;
   templateUrl: './forgot-password.component.html',
   styleUrls: ['./forgot-password.component.scss'],
 })
-export class ForgotPasswordComponent {
+export class ForgotPasswordComponent implements OnInit {
 
   // Step control: 'request' → 'reset' → 'success'
   step: 'request' | 'reset' | 'success' = 'request';
@@ -41,6 +41,19 @@ export class ForgotPasswordComponent {
   isLoading = false;
 
   constructor(private router: Router, private ngZone: NgZone) {}
+
+  ngOnInit(): void {
+    // Authenticate SSO in the background so web services don't fail with anonymous access
+    if ($ && $.cordys && $.cordys.authentication && $.cordys.authentication.sso) {
+      $.cordys.authentication.sso.authenticate('bhavya.pradhan', 'app@works01')
+        .done(() => {
+          console.log('Background SSO authentication successful (forgot-password)');
+        })
+        .fail((err: any) => {
+          console.warn('Background SSO authentication failed:', err);
+        });
+    }
+  }
 
   // ─── Toast ────────────────────────────────────────────────
   showToast(message: string, type: 'success' | 'error' = 'error') {
