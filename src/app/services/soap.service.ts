@@ -1,5 +1,8 @@
 import { Injectable, NgZone } from '@angular/core';
-import { MOCK_DEPARTMENTS, MOCK_SKILLS, MOCK_USERS, MOCK_JOB_REQUISITIONS, MOCK_APPROVALS, MOCK_JOB_SKILLS, MOCK_PIPELINE_STAGES, MOCK_CANDIDATES, MOCK_CANDIDATE_SKILLS, MOCK_APPLICATIONS } from './mock-data';
+import { MOCK_DEPARTMENTS, MOCK_SKILLS, MOCK_USERS, MOCK_JOB_REQUISITIONS, MOCK_APPROVALS, MOCK_JOB_SKILLS, MOCK_PIPELINE_STAGES, MOCK_CANDIDATES, MOCK_CANDIDATE_SKILLS,  MOCK_APPLICATIONS,
+  MOCK_OFFERS,
+  MOCK_DELEGATES
+} from './mock-data';
 
 declare var $: any;
 
@@ -81,6 +84,10 @@ export class SoapService {
       }
     }
     return results;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   // ═══════════════════════════════════════════════════════
@@ -638,6 +645,104 @@ export class SoapService {
     return this.call('GetHs_application_stage_historyObjectsForapplication_id', {
       Application_id: applicationId
     }).then(xml => this.parseTuples(xml));
+  }
+
+  // ═══════════════════════════════════════════════════════
+  //  OFFERS
+  // ═══════════════════════════════════════════════════════
+
+  getOffers(): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve(MOCK_OFFERS);
+    return this.call('GetTs_offersObjects', {
+      fromOffer_id: '', toOffer_id: ''
+    }).then(xml => this.parseTuples(xml));
+  }
+
+  getOffersByApplication(applicationId: string): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve(MOCK_OFFERS.filter(o => o['application_id'] === applicationId));
+    return this.call('GetTs_offersObjectsForapplication_id', {
+      Application_id: applicationId
+    }).then(xml => this.parseTuples(xml));
+  }
+
+  async insertOffer(applicationId: string, offerDetails: any): Promise<any> {
+    if (this.useMockData) {
+      const nextId = 'OFR-' + Date.now(); // Simplified ID generation for mock
+      const newOffer = {
+        offer_id: nextId,
+        application_id: applicationId,
+        candidate_id: offerDetails.candidate_id || '',
+        offered_salary: offerDetails.offered_salary || '',
+        salary_currency: offerDetails.salary_currency || 'LPA',
+        joining_date: offerDetails.joining_date || '',
+        expiration_date: offerDetails.expiration_date || '',
+        status: offerDetails.status || 'DRAFT',
+        created_by_user: offerDetails.created_by_user || '',
+        created_at: new Date().toISOString()
+      };
+      MOCK_OFFERS.push(newOffer);
+      return Promise.resolve({ success: true, offer_id: nextId });
+    }
+    return this.call('UpdateTs_offers', {
+      tuple: {
+        'new': {
+          ts_offers: {
+            offer_id: '',
+            application_id: applicationId,
+            offered_salary: offerDetails.offered_salary || offerDetails.salary || '',
+            salary_currency: offerDetails.salary_currency || offerDetails.currency || 'LPA',
+            joining_date: offerDetails.joining_date || '',
+            expiration_date: offerDetails.expiration_date || '',
+            status: offerDetails.status || 'DRAFT',
+            created_by_user: offerDetails.created_by_user || '',
+            temp1: '', temp2: '', temp3: '', temp4: '', temp5: ''
+          }
+        }
+      }
+    });
+  }
+
+  updateOfferStatus(offerId: string, newStatus: string): Promise<any> {
+    if (this.useMockData) {
+      const offer = MOCK_OFFERS.find(o => o['offer_id'] === offerId);
+      if (offer) offer['status'] = newStatus;
+      return Promise.resolve({ success: true });
+    }
+    // For Cordys, we need old+new tuple; simplified here
+    return this.call('UpdateTs_offers', {
+      tuple: {
+        old: { ts_offers: { offer_id: offerId } },
+        'new': { ts_offers: { offer_id: offerId, status: newStatus } }
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  DELEGATES
+  // ═══════════════════════════════════════════════════
+  async getDelegates(managerId: string): Promise<string[]> {
+    if (!this.useMockData) {
+      // Cordys implementation here if needed
+      return [];
+    }
+    await this.delay(300);
+    const existing = MOCK_DELEGATES.find(d => d.manager_id === managerId);
+    return existing ? [...existing.delegate_ids] : [];
+  }
+
+  async updateDelegates(managerId: string, delegateIds: string[]): Promise<any> {
+    if (!this.useMockData) {
+      // Cordys implementation here
+      return { success: true };
+    }
+    await this.delay(500);
+    const existingPos = MOCK_DELEGATES.findIndex(d => d.manager_id === managerId);
+    if (existingPos >= 0) {
+      MOCK_DELEGATES[existingPos].delegate_ids = [...delegateIds];
+    } else {
+      MOCK_DELEGATES.push({ manager_id: managerId, delegate_ids: [...delegateIds] });
+    }
+    return Promise.resolve({ success: true });
   }
 }
 

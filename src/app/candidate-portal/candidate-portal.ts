@@ -11,7 +11,7 @@ import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/rou
       <!-- Sidebar -->
       <aside class="sidebar" [class.collapsed]="sidebarCollapsed">
         <div class="sidebar-brand">
-          <span class="brand-icon">💼</span>
+          <span class="brand-icon"><i class="fas fa-briefcase"></i></span>
           <span class="brand-text" *ngIf="!sidebarCollapsed">Recruit</span>
         </div>
 

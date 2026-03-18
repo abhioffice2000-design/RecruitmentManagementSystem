@@ -1,20 +1,26 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { SoapService } from '../../services/soap.service';
 
 interface PipelineStage {
   stage_id: string;
   stage_name: string;
   stage_order: number;
+  icon: string; // FA icon class
 }
 
-interface KanbanCard {
+interface CandidatePipeline {
   application_id: string;
   candidate_id: string;
   candidate_name: string;
   candidate_email: string;
+  candidate_phone: string;
+  experience_years: string;
+  location: string;
   current_stage_id: string;
+  current_stage_order: number;
   status: string;
   applied_at: string;
   source: string;
@@ -33,11 +39,16 @@ export class PipelineBoardComponent implements OnInit {
   selectedRequisitionId = '';
   jobs: { requisition_id: string; title: string; department_name: string }[] = [];
   stages: PipelineStage[] = [];
-  cards: KanbanCard[] = [];
-  candidateMap = new Map<string, { name: string; email: string }>();
+  candidates: CandidatePipeline[] = [];
+  candidateMap = new Map<string, Record<string, string>>();
 
-  // Drag state
-  draggedCard: KanbanCard | null = null;
+  // Expand state
+  expandedCardId = '';
+
+  // Stage move confirmation
+  showMoveConfirm = false;
+  moveTarget: { candidate: CandidatePipeline; stage: PipelineStage } | null = null;
+  isMoving = false;
 
   // Toast
   toastMessage = '';
@@ -46,18 +57,36 @@ export class PipelineBoardComponent implements OnInit {
   private toastTimeout: any;
 
   loggedInUserId = '';
+  private pendingJobId = '';
 
-  constructor(private soap: SoapService) {}
+  // Stage icon mapping
+  private stageIcons: Record<string, string> = {
+    'applied': 'fa-file-alt',
+    'screening': 'fa-search',
+    'interview': 'fa-comments',
+    'offer': 'fa-handshake',
+    'hired': 'fa-check-circle',
+  };
+
+  constructor(private soap: SoapService, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
     this.loggedInUserId = sessionStorage.getItem('loggedInUserId') || '';
+    this.route.queryParams.subscribe(params => {
+      if (params['job']) {
+        this.pendingJobId = params['job'];
+      }
+    });
     this.loadInitialData();
   }
+
+  // ═══════════════════════════════════════════════════
+  //  DATA LOADING
+  // ═══════════════════════════════════════════════════
 
   async loadInitialData(): Promise<void> {
     this.isLoading = true;
     try {
-      // Load jobs + departments + stages + candidates in parallel
       const [jobsRaw, deptsRaw, stagesRaw, candidatesRaw] = await Promise.all([
         this.soap.getJobRequisitions(),
         this.soap.getDepartments(),
@@ -68,7 +97,6 @@ export class PipelineBoardComponent implements OnInit {
       const deptMap = new Map<string, string>();
       deptsRaw.forEach(d => deptMap.set(d['department_id'] || '', d['department_name'] || ''));
 
-      // Only show APPROVED jobs
       this.jobs = jobsRaw
         .filter(j => (j['status'] || '').toUpperCase() === 'APPROVED')
         .map(j => ({
@@ -77,25 +105,25 @@ export class PipelineBoardComponent implements OnInit {
           department_name: deptMap.get(j['department_id'] || '') || ''
         }));
 
-      // Pipeline stages sorted by order
-      this.stages = stagesRaw.map(s => ({
-        stage_id: s['stage_id'] || '',
-        stage_name: s['stage_name'] || '',
-        stage_order: parseInt(s['stage_order'] || '0', 10)
-      })).sort((a, b) => a.stage_order - b.stage_order);
+      this.stages = stagesRaw.map(s => {
+        const name = s['stage_name'] || '';
+        return {
+          stage_id: s['stage_id'] || '',
+          stage_name: name,
+          stage_order: parseInt(s['stage_order'] || '0', 10),
+          icon: this.stageIcons[name.toLowerCase()] || 'fa-circle'
+        };
+      }).sort((a, b) => a.stage_order - b.stage_order);
 
-      // Candidates map
-      candidatesRaw.forEach(c => {
-        const name = ((c['first_name'] || '') + ' ' + (c['last_name'] || '')).trim();
-        this.candidateMap.set(c['candidate_id'] || '', {
-          name: name || 'Unknown',
-          email: c['email'] || ''
-        });
-      });
+      candidatesRaw.forEach(c => this.candidateMap.set(c['candidate_id'] || '', c));
 
-      // Auto-select first job
-      if (this.jobs.length > 0) {
+      // Auto-select job
+      if (this.pendingJobId && this.jobs.some(j => j.requisition_id === this.pendingJobId)) {
+        this.selectedRequisitionId = this.pendingJobId;
+      } else if (this.jobs.length > 0) {
         this.selectedRequisitionId = this.jobs[0].requisition_id;
+      }
+      if (this.selectedRequisitionId) {
         await this.loadApplicationsForJob();
       }
     } catch (err) {
@@ -108,131 +136,131 @@ export class PipelineBoardComponent implements OnInit {
 
   async loadApplicationsForJob(): Promise<void> {
     if (!this.selectedRequisitionId) {
-      this.cards = [];
+      this.candidates = [];
       return;
     }
     try {
       const apps = await this.soap.getApplicationsByRequisition(this.selectedRequisitionId);
-      this.cards = apps
-        .filter(a => (a['status'] || '') === 'ACTIVE')
+      this.candidates = apps
+        .filter(a => (a['status'] || '').toUpperCase() === 'ACTIVE')
         .map(a => {
           const cand = this.candidateMap.get(a['candidate_id'] || '');
+          const name = cand ? ((cand['first_name'] || '') + ' ' + (cand['last_name'] || '')).trim() : 'Unknown';
+          const currentStage = this.stages.find(s => s.stage_id === (a['current_stage_id'] || ''));
           return {
             application_id: a['application_id'] || '',
             candidate_id: a['candidate_id'] || '',
-            candidate_name: cand?.name || a['candidate_id'] || '',
-            candidate_email: cand?.email || '',
+            candidate_name: name,
+            candidate_email: cand?.['email'] || '',
+            candidate_phone: cand?.['phone'] || '',
+            experience_years: cand?.['experience_years'] || '',
+            location: cand?.['location'] || '',
             current_stage_id: a['current_stage_id'] || '',
+            current_stage_order: currentStage?.stage_order || 0,
             status: a['status'] || '',
             applied_at: a['applied_at'] || a['created_at'] || '',
             source: a['source'] || '',
             _raw: a
           };
-        });
+        })
+        .sort((a, b) => b.current_stage_order - a.current_stage_order); // furthest stage first
     } catch (err) {
       console.error('Failed to load applications:', err);
     }
   }
 
   async onJobChange(): Promise<void> {
+    this.expandedCardId = '';
     await this.loadApplicationsForJob();
   }
 
   // ═══════════════════════════════════════════════════
-  //  KANBAN COLUMN HELPERS
+  //  STAGE HELPERS
   // ═══════════════════════════════════════════════════
 
-  getCardsForStage(stageId: string): KanbanCard[] {
-    return this.cards.filter(c => c.current_stage_id === stageId);
+  getStageStatus(candidate: CandidatePipeline, stage: PipelineStage): 'completed' | 'current' | 'pending' {
+    if (stage.stage_id === candidate.current_stage_id) return 'current';
+    if (stage.stage_order < candidate.current_stage_order) return 'completed';
+    return 'pending';
   }
 
-  getUnstagedCards(): KanbanCard[] {
-    const stageIds = new Set(this.stages.map(s => s.stage_id));
-    return this.cards.filter(c => !stageIds.has(c.current_stage_id));
+  getStageName(stageId: string): string {
+    return this.stages.find(s => s.stage_id === stageId)?.stage_name || 'Unknown';
+  }
+
+  getStageIcon(stageId: string): string {
+    return this.stages.find(s => s.stage_id === stageId)?.icon || 'fa-circle';
+  }
+
+  getProgressWidth(candidate: CandidatePipeline): string {
+    if (this.stages.length <= 1) return '0%';
+    const idx = this.stages.findIndex(s => s.stage_id === candidate.current_stage_id);
+    if (idx < 0) return '0%';
+    return ((idx / (this.stages.length - 1)) * 100) + '%';
   }
 
   // ═══════════════════════════════════════════════════
-  //  DRAG & DROP
+  //  STAGE MOVE
   // ═══════════════════════════════════════════════════
 
-  onDragStart(event: DragEvent, card: KanbanCard): void {
-    this.draggedCard = card;
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', card.application_id);
-    }
+  onStageClick(candidate: CandidatePipeline, stage: PipelineStage): void {
+    if (stage.stage_id === candidate.current_stage_id) return;
+    this.moveTarget = { candidate, stage };
+    this.showMoveConfirm = true;
   }
 
-  onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = 'move';
-    }
+  cancelMove(): void {
+    this.showMoveConfirm = false;
+    this.moveTarget = null;
   }
 
-  onDragEnter(event: DragEvent): void {
-    const el = (event.currentTarget as HTMLElement);
-    el.classList.add('drag-hover');
-  }
-
-  onDragLeave(event: DragEvent): void {
-    const el = (event.currentTarget as HTMLElement);
-    el.classList.remove('drag-hover');
-  }
-
-  async onDrop(event: DragEvent, targetStageId: string): Promise<void> {
-    event.preventDefault();
-    const el = (event.currentTarget as HTMLElement);
-    el.classList.remove('drag-hover');
-
-    if (!this.draggedCard || this.draggedCard.current_stage_id === targetStageId) {
-      this.draggedCard = null;
-      return;
-    }
-
-    const card = this.draggedCard;
-    const fromStageId = card.current_stage_id;
-    this.draggedCard = null;
+  async confirmMove(): Promise<void> {
+    if (!this.moveTarget) return;
+    const { candidate, stage } = this.moveTarget;
+    const fromStageId = candidate.current_stage_id;
+    this.isMoving = true;
 
     try {
-      // 1. Update ts_applications.current_stage_id
-      await this.soap.updateApplicationStage(card._raw, targetStageId);
-
-      // 2. Insert into hs_application_stage_history
+      await this.soap.updateApplicationStage(candidate._raw, stage.stage_id);
       await this.soap.insertStageHistory({
-        application_id: card.application_id,
+        application_id: candidate.application_id,
         from_stage_id: fromStageId,
-        to_stage_id: targetStageId,
+        to_stage_id: stage.stage_id,
         changed_by: this.loggedInUserId,
         comments: ''
       });
 
-      // 3. Update local state
-      card.current_stage_id = targetStageId;
-      card._raw['current_stage_id'] = targetStageId;
+      // Update local state
+      candidate.current_stage_id = stage.stage_id;
+      candidate.current_stage_order = stage.stage_order;
+      candidate._raw['current_stage_id'] = stage.stage_id;
 
-      const stageName = this.stages.find(s => s.stage_id === targetStageId)?.stage_name || targetStageId;
-      this.showToast(`${card.candidate_name} moved to "${stageName}"`, 'success');
-
+      this.showToast(`${candidate.candidate_name} moved to "${stage.stage_name}"`, 'success');
     } catch (err) {
       console.error('Stage move failed:', err);
       this.showToast('Failed to move candidate. Please try again.', 'error');
-      // Reload to ensure consistency
-      await this.loadApplicationsForJob();
+    } finally {
+      this.isMoving = false;
+      this.showMoveConfirm = false;
+      this.moveTarget = null;
     }
   }
 
   // ═══════════════════════════════════════════════════
-  //  HELPERS
+  //  UI HELPERS
   // ═══════════════════════════════════════════════════
 
-  formatDate(d: string): string {
-    if (!d) return '';
-    return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+  toggleExpand(id: string): void {
+    this.expandedCardId = this.expandedCardId === id ? '' : id;
   }
 
   getInitials(name: string): string {
     return name.split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
+  }
+
+  formatDate(d: string): string {
+    if (!d) return '';
+    return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   showToast(message: string, type: 'success' | 'error'): void {

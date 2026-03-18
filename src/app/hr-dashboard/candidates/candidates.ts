@@ -1,52 +1,24 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { SoapService } from '../../services/soap.service';
 
-declare var $: any;
-
-// ===== DB INTERFACES =====
-interface Candidate {
-  candidate_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string;
-  experience_years: string;
-  location: string;
-}
-
-interface Application {
+interface CandidateRow {
   application_id: string;
   candidate_id: string;
   requisition_id: string;
+  candidate_name: string;
+  candidate_email: string;
+  candidate_phone: string;
+  experience_years: string;
+  location: string;
   source: string;
   status: string;
   current_stage_id: string;
-  candidate_name?: string;
-  candidate_email?: string;
-}
-
-interface Department {
-  department_id: string;
-  department_name: string;
-}
-
-interface UserInterviewer {
-  user_id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  role: string;
-  department_id: string;
-}
-
-interface InterviewSlot {
-  slot_id: string;
-  slot_date: string;
-  start_time: string;
-  end_time: string;
-  created_by_user: string;
-  temp1: string;
+  stage_name: string;
+  applied_at: string;
+  _raw: Record<string, string>;
 }
 
 @Component({
@@ -56,649 +28,643 @@ interface InterviewSlot {
   template: `
     <div class="dashboard-content">
       <div class="header">
-        <h2>Candidates Overview</h2>
-        <div class="user-info">
-          <span class="icon">🔔</span>
-          <div class="profile">
-            <div class="text">
-              <span class="name">Asley Green</span>
-              <span class="role">Lead HR</span>
-            </div>
-            <img src="https://via.placeholder.com/40" alt="profile">
+        <h2>Candidates</h2>
+        <div class="user-info"><span class="icon">🔔</span></div>
+      </div>
+
+      <!-- Job Filter Bar -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>Filter by Job:</label>
+          <select [(ngModel)]="selectedJobId" (ngModelChange)="onJobChange()" class="filter-select job-select">
+            <option value="ALL">All Jobs</option>
+            <option *ngFor="let j of jobs" [value]="j.requisition_id">
+              {{ j.title }} — {{ j.department_name }}
+            </option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" placeholder="Search candidates..."
+                   [(ngModel)]="searchQuery" (ngModelChange)="applyFilters()"
+                   class="search-input">
           </div>
+        </div>
+        <div class="filter-group">
+          <select [(ngModel)]="stageFilter" (ngModelChange)="applyFilters()" class="filter-select">
+            <option value="">All Stages</option>
+            <option *ngFor="let s of stages" [value]="s.stage_id">{{ s.stage_name }}</option>
+          </select>
+        </div>
+        <div class="stats-pill" *ngIf="!isLoading">
+          <strong>{{ filteredCandidates.length }}</strong> candidate{{ filteredCandidates.length !== 1 ? 's' : '' }}
         </div>
       </div>
-      
-      <div class="candidates-container">
+
+      <!-- Loading -->
+      <div class="loading-state" *ngIf="isLoading">
+        <div class="spinner"></div>
+        <p>Loading candidates...</p>
+      </div>
+
+      <!-- Tabs -->
+      <div class="candidates-container" *ngIf="!isLoading">
         <div class="tabs-header">
-          <button [class.active]="activeTab === 'in-progress'" (click)="activeTab = 'in-progress'">In-Progress</button>
-          <button [class.active]="activeTab === 'onboarded'" (click)="activeTab = 'onboarded'">Onboarded</button>
+          <button [class.active]="activeTab === 'active'" (click)="activeTab = 'active'; applyFilters()">
+            Active <span class="tab-count">{{ activeCount }}</span>
+          </button>
+          <button [class.active]="activeTab === 'hired'" (click)="activeTab = 'hired'; applyFilters()">
+            Hired <span class="tab-count">{{ hiredCount }}</span>
+          </button>
+          <button [class.active]="activeTab === 'rejected'" (click)="activeTab = 'rejected'; applyFilters()">
+            Rejected <span class="tab-count">{{ rejectedCount }}</span>
+          </button>
         </div>
 
-        <!-- In Progress Tab -->
-        <div class="tab-content" *ngIf="activeTab === 'in-progress'">
-          <div class="controls-bar">
-            <div class="search-wrap">
-              <span class="search-icon">🔍</span>
-              <input type="text" placeholder="Search candidates..." class="search-input">
-            </div>
-            <select class="filter-select">
-              <option>All Stages</option><option>Interview</option><option>Screening</option>
-            </select>
-          </div>
-
-          <table class="candidates-table">
+        <!-- Table -->
+        <div class="tab-content">
+          <table class="candidates-table" *ngIf="filteredCandidates.length > 0">
             <thead>
               <tr>
-                <th>Candidate Name</th><th>Email</th><th>Requisition</th><th>Stage</th><th>Status</th><th>Action</th>
+                <th>Candidate</th>
+                <th>Job Role</th>
+                <th>Stage</th>
+                <th>Source</th>
+                <th>Applied</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let app of activeApplications">
+              <tr *ngFor="let c of filteredCandidates" (click)="openProfile(c)" class="clickable-row">
                 <td>
-                  <div class="candidate-info">
-                    <div class="avatar-placeholder">{{ (app.candidate_name || 'C').charAt(0) }}</div>
-                    <div class="details"><span class="name">{{ app.candidate_name || app.candidate_id }}</span></div>
+                  <div class="candidate-cell">
+                    <div class="avatar-circle">{{ getInitials(c.candidate_name) }}</div>
+                    <div class="cell-text">
+                      <span class="name">{{ c.candidate_name }}</span>
+                      <span class="email">{{ c.candidate_email }}</span>
+                    </div>
                   </div>
                 </td>
-                <td>{{ app.candidate_email || '-' }}</td>
-                <td><span class="job-role">{{ app.requisition_id }}</span></td>
-                <td><span class="stage-text">{{ getStageName(app.current_stage_id) }}</span></td>
-                <td><span class="status-badge" [ngClass]="app.status.toLowerCase()">{{ app.status }}</span></td>
+                <td><span class="job-badge">{{ getJobTitle(c.requisition_id) }}</span></td>
+                <td><span class="stage-badge" [attr.data-stage]="c.stage_name.toLowerCase()">{{ c.stage_name }}</span></td>
+                <td><span class="source-text">{{ c.source || 'Direct' }}</span></td>
+                <td><span class="date-text">{{ formatDate(c.applied_at) }}</span></td>
                 <td>
-                  <button class="btn-view" style="margin-right:8px">View Details</button>
-                  <button class="btn-schedule" *ngIf="isInterviewStage(app)" (click)="openScheduleModal(app)">Schedule Interview</button>
+                  <div class="action-btns" (click)="$event.stopPropagation()">
+                    <button class="btn-view" (click)="openProfile(c)"><i class="fas fa-user"></i> Profile</button>
+                    <button class="btn-pipeline" (click)="openPipelineModal(c)"><i class="fas fa-project-diagram"></i> Pipeline</button>
+                  </div>
                 </td>
               </tr>
             </tbody>
           </table>
-          <p *ngIf="activeApplications.length === 0" style="margin-top:2rem; text-align:center; color:#94a3b8;">No active applications found.</p>
-        </div>
-
-        <div class="tab-content" *ngIf="activeTab === 'onboarded'">
-          <p style="text-align:center; color:#94a3b8;">No onboarded candidates yet.</p>
+          <div class="empty-state" *ngIf="filteredCandidates.length === 0">
+            <i class="fas fa-clipboard-list empty-icon-fa"></i>
+            <h3>No candidates found</h3>
+            <p>Try adjusting your filters or select a different job.</p>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ===== SCHEDULE INTERVIEW MODAL ===== -->
-    <div class="modal-overlay" *ngIf="showScheduleModal" (click)="closeScheduleModal()">
-      <div class="modal-card" (click)="$event.stopPropagation()">
-        <div class="modal-header">
-          <h3>📅 Schedule Interview</h3>
-          <button class="modal-close" (click)="closeScheduleModal()">✕</button>
+    <!-- ═══ CANDIDATE PROFILE DRAWER ═══ -->
+    <div class="drawer-overlay" *ngIf="showDrawer" (click)="closeDrawer()"></div>
+    <div class="drawer-panel" [class.open]="showDrawer">
+      <div class="drawer-header">
+        <h3><i class="fas fa-user-circle"></i> Candidate Profile</h3>
+        <button class="drawer-close" (click)="closeDrawer()"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="drawer-body" *ngIf="selectedCandidate">
+        <div class="profile-hero">
+          <div class="avatar-large">{{ getInitials(selectedCandidate.candidate_name) }}</div>
+          <div>
+            <h2 class="profile-name">{{ selectedCandidate.candidate_name }}</h2>
+            <span class="profile-email">{{ selectedCandidate.candidate_email }}</span>
+          </div>
         </div>
-        <div class="modal-body">
-          <p class="schedule-for">Scheduling for: <strong>{{ selectedApp?.candidate_name }}</strong> ({{ selectedApp?.application_id }})</p>
 
-          <!-- Step 1: Select Department -->
-          <div class="form-group">
-            <label>1. Select Department</label>
-            <select [(ngModel)]="selectedDepartmentIdx" (ngModelChange)="onDepartmentChange()" class="form-input">
-              <option [ngValue]="-1">-- Select Department --</option>
-              <option *ngFor="let d of departments; let i = index" [ngValue]="i">{{ d.department_name }}</option>
-            </select>
+        <div class="profile-section">
+          <h4>Contact</h4>
+          <div class="info-grid">
+            <div class="info-item"><span class="info-label"><i class="fas fa-envelope"></i> Email</span><span>{{ selectedCandidate.candidate_email }}</span></div>
+            <div class="info-item"><span class="info-label"><i class="fas fa-phone"></i> Phone</span><span>{{ selectedCandidate.candidate_phone || 'N/A' }}</span></div>
+            <div class="info-item"><span class="info-label"><i class="fas fa-map-marker-alt"></i> Location</span><span>{{ selectedCandidate.location || 'N/A' }}</span></div>
+            <div class="info-item"><span class="info-label"><i class="fas fa-briefcase"></i> Experience</span><span>{{ selectedCandidate.experience_years || '0' }} years</span></div>
+          </div>
+        </div>
+
+        <div class="profile-section">
+          <h4>Application</h4>
+          <div class="info-grid">
+            <div class="info-item"><span class="info-label"><i class="fas fa-building"></i> Job</span><span>{{ getJobTitle(selectedCandidate.requisition_id) }}</span></div>
+            <div class="info-item"><span class="info-label"><i class="fas fa-project-diagram"></i> Stage</span><span class="stage-badge" [attr.data-stage]="selectedCandidate.stage_name.toLowerCase()">{{ selectedCandidate.stage_name }}</span></div>
+            <div class="info-item"><span class="info-label"><i class="fas fa-link"></i> Source</span><span>{{ selectedCandidate.source || 'Direct' }}</span></div>
+            <div class="info-item"><span class="info-label"><i class="fas fa-calendar-alt"></i> Applied</span><span>{{ formatDate(selectedCandidate.applied_at) }}</span></div>
+          </div>
+        </div>
+
+        <div class="profile-section" *ngIf="candidateSkills.length > 0">
+          <h4>Skills</h4>
+          <div class="skills-list">
+            <span class="skill-chip" *ngFor="let sk of candidateSkills">
+              {{ getSkillName(sk['skill_id']) }} <small>({{ sk['experience_years'] || '0' }} yrs)</small>
+            </span>
+          </div>
+        </div>
+
+        <div class="drawer-actions">
+          <button class="btn-pipeline-lg" (click)="openPipelineModal(selectedCandidate)"><i class="fas fa-project-diagram"></i> Change Pipeline Stage</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ INLINE PIPELINE MODAL ═══ -->
+    <div class="modal-overlay" *ngIf="showPipelineModal" (click)="closePipelineModal()">
+      <div class="modal-card pipeline-modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3><i class="fas fa-project-diagram"></i> Pipeline — {{ pipelineCandidate?.candidate_name }}</h3>
+          <button class="modal-close" (click)="closePipelineModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" *ngIf="pipelineCandidate">
+          <div class="pipeline-info-row">
+            <div class="pipeline-avatar">{{ getInitials(pipelineCandidate.candidate_name) }}</div>
+            <div>
+              <span class="pipeline-cand-name">{{ pipelineCandidate.candidate_name }}</span>
+              <span class="pipeline-job-name">{{ getJobTitle(pipelineCandidate.requisition_id) }}</span>
+            </div>
           </div>
 
-          <!-- Step 2: Select Interviewer -->
-          <div class="form-group" *ngIf="formStep >= 2">
-            <label>2. Select Primary Interviewer</label>
-            <select [(ngModel)]="selectedInterviewerIdx" (ngModelChange)="onInterviewerChange()" class="form-input">
-              <option [ngValue]="-1">-- Select Interviewer --</option>
-              <option *ngFor="let u of interviewers; let i = index" [ngValue]="i">{{ u.first_name }} {{ u.last_name }} ({{ u.email }})</option>
-            </select>
-            <small *ngIf="interviewers.length === 0" class="hint-red">No interviewers found in this department.</small>
-          </div>
-
-          <!-- Step 3: Select Slot -->
-          <div class="form-group" *ngIf="formStep >= 3">
-            <label>3. Select Available Slot</label>
-            <select [(ngModel)]="selectedSlotIdx" (ngModelChange)="onSlotChange()" class="form-input">
-              <option [ngValue]="-1">-- Select Slot --</option>
-              <option *ngFor="let s of availableSlots; let i = index" [ngValue]="i">
-                {{ s.slot_date }} | {{ s.start_time }} - {{ s.end_time }}
-              </option>
-            </select>
-            <small *ngIf="availableSlots.length === 0" class="hint-red">No available slots for this interviewer.</small>
-          </div>
-
-          <!-- Step 4: Add More Interviewers (optional) -->
-          <div class="form-group" *ngIf="formStep >= 4">
-            <label>4. Additional Interviewers (Optional)</label>
-            <div class="added-interviewers">
-              <span class="added-chip" *ngFor="let ai of additionalInterviewers; let idx = index">
-                {{ ai.first_name }} {{ ai.last_name }}
-                <button class="chip-remove" (click)="removeAdditionalInterviewer(idx)">✕</button>
-              </span>
+          <div class="pipeline-stages">
+            <div class="pipeline-track">
+              <div class="pipeline-fill" [style.width]="getPipelineProgress()"></div>
             </div>
-            <div class="add-interviewer-row">
-              <select [(ngModel)]="additionalInterviewerToAdd" class="form-input" style="flex:1">
-                <option value="">-- Add Interviewer --</option>
-                <option *ngFor="let u of remainingInterviewers" [value]="u.user_id">{{ u.first_name }} {{ u.last_name }}</option>
-              </select>
-              <button class="btn-add" (click)="addInterviewer()" [disabled]="!additionalInterviewerToAdd">+ Add</button>
-            </div>
-          </div>
-
-          <!-- Step 5: Interview Details -->
-          <div *ngIf="formStep >= 4">
-            <div class="form-group">
-              <label>5. Interview Type</label>
-              <select [(ngModel)]="interviewType" class="form-input">
-                <option value="">-- Select Type --</option>
-                <option value="Technical Round">Technical Round</option>
-                <option value="HR Screening">HR Screening</option>
-                <option value="System Design">System Design</option>
-                <option value="Managerial Round">Managerial Round</option>
-                <option value="Culture Fit">Culture Fit</option>
-                <option value="Portfolio Review">Portfolio Review</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>6. Round Number</label>
-              <input type="number" [(ngModel)]="roundNumber" class="form-input" min="1" max="10" placeholder="1" />
-            </div>
-            <div class="form-group">
-              <label>7. Meeting Link</label>
-              <div class="meeting-link-row">
-                <input type="text" [(ngModel)]="meetingLink" class="form-input" style="flex:1" placeholder="https://meet.google.com/..." />
-                <button class="btn-generate" (click)="generateMeetingLink()">🔗 Generate</button>
+            <div class="pipeline-dots">
+              <div class="pipeline-dot-wrap" *ngFor="let s of stages"
+                   [class.completed]="getPipelineStageStatus(s) === 'completed'"
+                   [class.current]="getPipelineStageStatus(s) === 'current'"
+                   [class.pending]="getPipelineStageStatus(s) === 'pending'"
+                   (click)="onPipelineStageClick(s)">
+                <div class="pipeline-dot">
+                  <i class="fas" [ngClass]="getStageIcon(s.stage_name)"></i>
+                </div>
+                <span class="pipeline-stage-label">{{ s.stage_name }}</span>
               </div>
             </div>
           </div>
 
-        </div>
-        <div class="modal-footer">
-          <button class="btn-cancel" (click)="closeScheduleModal()">Cancel</button>
-          <button class="btn-submit" (click)="scheduleInterview()" [disabled]="isScheduling || !canSchedule()">
-            {{ isScheduling ? 'Scheduling...' : '✅ Schedule Interview' }}
-          </button>
+          <div class="pipeline-confirm" *ngIf="pendingStageMove">
+            <div class="confirm-text">
+              Move from <strong>{{ pipelineCandidate.stage_name }}</strong>
+              <i class="fas fa-arrow-right"></i>
+              <strong>{{ pendingStageMove.stage_name }}</strong>?
+            </div>
+            <div class="confirm-btns">
+              <button class="btn-cancel-sm" (click)="pendingStageMove = null"><i class="fas fa-times"></i> Cancel</button>
+              <button class="btn-confirm-sm" (click)="confirmStageMove()" [disabled]="isStageMoveInProgress">
+                <i class="fas" [ngClass]="isStageMoveInProgress ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+                {{ isStageMoveInProgress ? 'Moving...' : 'Confirm' }}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   `,
   styleUrls: ['../../hr-dashboard/hr-dashboard.scss'],
   styles: [`
+    /* ── Filter Bar ── */
+    .filter-bar {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 20px; flex-wrap: wrap;
+      background: #fff; padding: 14px 20px; border-radius: 12px;
+      border: 1px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .filter-group { display: flex; align-items: center; gap: 8px;
+      label { font-weight: 600; font-size: 13px; color: #475569; white-space: nowrap; }
+    }
+    .filter-select { padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; cursor: pointer; &:focus { border-color: #2563eb; } }
+    .job-select { min-width: 260px; }
+    .search-wrap { position: relative;
+      .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; color: #64748b; }
+      .search-input { padding: 10px 16px 10px 36px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; width: 220px; outline: none; &:focus { border-color: #2563eb; } }
+    }
+    .stats-pill { margin-left: auto; padding: 6px 14px; background: #eff6ff; color: #2563eb; border-radius: 20px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+    /* ── Loading ── */
+    .loading-state { display: flex; flex-direction: column; align-items: center; padding: 60px; color: #94a3b8;
+      .spinner { width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Container ── */
     .candidates-container {
       background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; overflow: hidden;
-      .tabs-header {
-        display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; padding: 0 24px;
-        button { background: none; border: none; padding: 20px 24px; font-size: 15px; font-weight: 600; color: #64748b; cursor: pointer; position: relative; transition: all 0.2s;
-          &:hover { color: #1e293b; }
-          &.active { color: #2563eb;
-            &::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 3px; background: #2563eb; border-radius: 3px 3px 0 0; }
-          }
+    }
+    .tabs-header {
+      display: flex; border-bottom: 1px solid #e2e8f0; background: #f8fafc; padding: 0 24px;
+      button { background: none; border: none; padding: 16px 20px; font-size: 14px; font-weight: 600; color: #64748b; cursor: pointer; position: relative; transition: all 0.2s; display: flex; align-items: center; gap: 8px;
+        &:hover { color: #1e293b; }
+        &.active { color: #2563eb;
+          &::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 3px; background: #2563eb; border-radius: 3px 3px 0 0; }
         }
-      }
-      .tab-content {
-        padding: 24px;
-        .controls-bar { display: flex; justify-content: space-between; margin-bottom: 24px;
-          .search-wrap { position: relative;
-            .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; color: #64748b; }
-            .search-input { padding: 10px 16px 10px 36px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; width: 280px; outline: none; &:focus { border-color: #2563eb; } }
-          }
-          .filter-select { padding: 10px 16px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; cursor: pointer; }
-        }
-        .candidates-table { width: 100%; border-collapse: collapse;
-          th { text-align: left; padding: 16px; color: #64748b; font-weight: 600; font-size: 13px; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
-          td { padding: 16px; border-bottom: 1px solid #f1f5f9; vertical-align: middle;
-            .candidate-info { display: flex; align-items: center; gap: 12px;
-              .avatar-placeholder { width: 40px; height: 40px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: 600; color: #475569; }
-              .details .name { font-weight: 600; font-size: 14px; }
-            }
-            .job-role { font-weight: 500; font-size: 14px; }
-            .stage-text { font-size: 13px; font-weight: 600; }
-            .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; background: #f1f5f9; color: #475569; &.active { background: #dcfce7; color: #166534; } }
-            .btn-view { padding: 8px 16px; border: 1px solid #2563eb; background: #fff; color: #2563eb; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; &:hover { background: #2563eb; color: #fff; } }
-            .btn-schedule { padding: 8px 16px; border: none; background: #10b981; color: #fff; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; margin-left: 8px; &:hover { background: #059669; } }
-          }
-          tr:hover td { background: #f8fafc; }
-        }
+        .tab-count { padding: 2px 8px; background: #e2e8f0; border-radius: 10px; font-size: 11px; }
+        &.active .tab-count { background: #dbeafe; color: #2563eb; }
       }
     }
-    /* Modal */
-    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-    .modal-card { background: white; border-radius: 12px; width: 580px; max-width: 95%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-    .modal-header { padding: 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: white; z-index: 1;
-      h3 { margin: 0; font-size: 18px; }
-      .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b; }
+    .tab-content { padding: 0; }
+
+    /* ── Table ── */
+    .candidates-table { width: 100%; border-collapse: collapse;
+      th { text-align: left; padding: 14px 16px; color: #64748b; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+      td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; font-size: 14px; }
+      .clickable-row { cursor: pointer; transition: background 0.15s; &:hover td { background: #f0f9ff; } }
     }
-    .modal-body { padding: 20px; }
-    .modal-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; position: sticky; bottom: 0; background: white; }
-    .schedule-for { margin-bottom: 20px; padding: 12px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #2563eb; font-size: 14px; }
-    .form-group { margin-bottom: 16px;
-      label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; color: #334155; }
+    .candidate-cell { display: flex; align-items: center; gap: 12px; }
+    .avatar-circle { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+    .cell-text { display: flex; flex-direction: column;
+      .name { font-weight: 600; color: #1e293b; }
+      .email { font-size: 12px; color: #94a3b8; }
     }
-    .form-input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; outline: none; box-sizing: border-box; &:focus { border-color: #2563eb; } }
-    .hint-red { color: #ef4444; display: block; margin-top: 4px; font-size: 12px; }
-    .added-interviewers { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-    .added-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 16px; font-size: 13px; color: #1e40af;
-      .chip-remove { background: none; border: none; cursor: pointer; color: #ef4444; font-size: 14px; padding: 0; }
+    .job-badge { padding: 4px 10px; background: #f1f5f9; border-radius: 6px; font-size: 13px; font-weight: 500; color: #475569; }
+    .stage-badge { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #e2e8f0; color: #475569;
+      &[data-stage="applied"] { background: #dbeafe; color: #1e40af; }
+      &[data-stage="screening"] { background: #fef3c7; color: #92400e; }
+      &[data-stage="interview"] { background: #ede9fe; color: #5b21b6; }
+      &[data-stage="offer"] { background: #d1fae5; color: #065f46; }
+      &[data-stage="hired"] { background: #dcfce7; color: #166534; }
     }
-    .add-interviewer-row { display: flex; gap: 8px; }
-    .btn-add { padding: 10px 16px; border: none; background: #2563eb; color: white; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap; &:hover { background: #1d4ed8; } &:disabled { opacity: 0.5; cursor: not-allowed; } }
-    .meeting-link-row { display: flex; gap: 8px; }
-    .btn-generate { padding: 10px 16px; border: 1px solid #e2e8f0; background: #f8fafc; border-radius: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; &:hover { background: #e2e8f0; } }
-    .btn-cancel { padding: 10px 20px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer; font-weight: 600; }
-    .btn-submit { padding: 10px 20px; border: none; border-radius: 6px; background: #2563eb; color: white; cursor: pointer; font-weight: 600; &:hover { background: #1d4ed8; } &:disabled { opacity: 0.5; cursor: not-allowed; } }
+    .source-text { font-size: 13px; color: #64748b; }
+    .date-text { font-size: 13px; color: #64748b; }
+    .action-btns { display: flex; gap: 6px; }
+    .btn-view { padding: 6px 12px; border: 1px solid #2563eb; background: #fff; color: #2563eb; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; &:hover { background: #2563eb; color: #fff; } }
+    .btn-pipeline { padding: 6px 12px; border: 1px solid #10b981; background: #fff; color: #10b981; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; &:hover { background: #10b981; color: #fff; } }
+
+    /* ── Empty State ── */
+    .empty-state { text-align: center; padding: 60px 20px;
+      .empty-icon { font-size: 48px; margin-bottom: 12px; }
+      h3 { color: #475569; margin: 0 0 8px; }
+      p { color: #94a3b8; font-size: 14px; margin: 0; }
+    }
+
+    /* ── DRAWER ── */
+    .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 900; animation: fadeIn 0.2s; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .drawer-panel { position: fixed; top: 0; right: -480px; width: 460px; height: 100vh; background: #fff; z-index: 1000; box-shadow: -4px 0 20px rgba(0,0,0,0.12); transition: right 0.3s ease; overflow-y: auto;
+      &.open { right: 0; }
+    }
+    .drawer-header { padding: 20px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: #fff; z-index: 1;
+      h3 { margin: 0; font-size: 18px; color: #1e293b; }
+      .drawer-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #64748b; padding: 4px; &:hover { color: #ef4444; } }
+    }
+    .drawer-body { padding: 24px; }
+    .profile-hero { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+    .avatar-large { width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, #2563eb, #7c3aed); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; flex-shrink: 0; }
+    .profile-name { margin: 0; font-size: 20px; color: #1e293b; }
+    .profile-email { font-size: 14px; color: #64748b; }
+    .profile-section { margin-bottom: 24px;
+      h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin: 0 0 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; }
+    }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .info-item { display: flex; flex-direction: column; gap: 2px;
+      .info-label { font-size: 12px; color: #94a3b8; }
+      span:last-child { font-size: 14px; color: #1e293b; font-weight: 500; }
+    }
+    .skills-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .skill-chip { padding: 6px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 16px; font-size: 13px; color: #1e40af; font-weight: 500;
+      small { font-weight: 400; color: #64748b; }
+    }
+    .drawer-actions { margin-top: 28px; padding-top: 20px; border-top: 1px solid #e2e8f0; }
+    .btn-pipeline-lg { width: 100%; padding: 12px; border: none; background: #2563eb; color: #fff; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; &:hover { background: #1d4ed8; } }
+
+    /* ── INLINE PIPELINE MODAL ── */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.2s; }
+    .modal-card { background: white; border-radius: 14px; width: 480px; max-width: 95%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.15); overflow: hidden; }
+    .modal-header { padding: 18px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;
+      h3 { margin: 0; font-size: 17px; color: #1e293b; i { margin-right: 8px; color: #2563eb; } }
+      .modal-close { background: none; border: none; font-size: 18px; cursor: pointer; color: #64748b; padding: 4px; &:hover { color: #ef4444; } }
+    }
+    .modal-body { padding: 24px; }
+    
+    .pipeline-info-row { display: flex; align-items: center; gap: 16px; margin-bottom: 30px; }
+    .pipeline-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #10b981, #059669); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
+    .pipeline-cand-name { font-size: 18px; font-weight: 600; color: #1e293b; display: block; }
+    .pipeline-job-name { font-size: 13px; color: #64748b; font-weight: 500; }
+
+    .pipeline-stages { position: relative; padding-bottom: 20px; }
+    .pipeline-track { height: 4px; background: #e2e8f0; border-radius: 4px; position: relative; margin: 0 28px; }
+    .pipeline-fill { height: 100%; background: linear-gradient(90deg, #2563eb, #7c3aed); border-radius: 4px; transition: width 0.5s ease; }
+    
+    .pipeline-dots { display: flex; justify-content: space-between; margin-top: -14px; position: relative; z-index: 1; }
+    .pipeline-dot-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: transform 0.15s; width: 60px;
+      &:hover { transform: scale(1.1); }
+      &.completed .pipeline-dot { background: #2563eb; color: #fff; border-color: #2563eb; }
+      &.current .pipeline-dot { background: #7c3aed; color: #fff; border-color: #7c3aed; box-shadow: 0 0 0 4px rgba(124,58,237,0.2); animation: pulseModal 2s infinite; }
+      &.pending .pipeline-dot { background: #fff; color: #cbd5e1; border-color: #e2e8f0; }
+    }
+    @keyframes pulseModal { 0%, 100% { box-shadow: 0 0 0 4px rgba(124,58,237,0.2); } 50% { box-shadow: 0 0 0 8px rgba(124,58,237,0.08); } }
+    .pipeline-dot { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all 0.3s; background: white; }
+    .pipeline-stage-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.3px; text-align: center; line-height: 1.2; word-wrap: break-word; }
+
+    .pipeline-confirm { margin-top: 30px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; animation: slideDownConfirm 0.2s ease-out; }
+    @keyframes slideDownConfirm { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .confirm-text { font-size: 14px; color: #334155; margin-bottom: 12px; text-align: center;
+      strong { color: #0f172a; }
+      i { color: #94a3b8; margin: 0 8px; }
+    }
+    .confirm-btns { display: flex; justify-content: center; gap: 10px; }
+    .btn-cancel-sm { padding: 8px 16px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; cursor: pointer; font-weight: 600; font-size: 13px; color: #64748b; &:hover { background: #f1f5f9; } }
+    .btn-confirm-sm { padding: 8px 16px; border: none; border-radius: 6px; background: #2563eb; color: white; cursor: pointer; font-weight: 600; font-size: 13px; &:hover { background: #1d4ed8; } &:disabled { opacity: 0.5; cursor: not-allowed; } }
   `]
 })
 export class CandidatesTab implements OnInit {
-  activeTab = 'in-progress';
+  isLoading = true;
+  activeTab = 'active';
 
-  candidatesList: Candidate[] = [];
-  activeApplications: Application[] = [];
+  // Data
+  jobs: { requisition_id: string; title: string; department_name: string }[] = [];
+  stages: { stage_id: string; stage_name: string; order: number }[] = [];
+  skills: Record<string, string>[] = [];
+  allCandidates: CandidateRow[] = [];
+  filteredCandidates: CandidateRow[] = [];
 
-  // ─── Schedule Modal State ─────────────────────────
-  showScheduleModal = false;
-  selectedApp: Application | null = null;
-  isScheduling = false;
-  formStep = 1; // tracks which steps are visible
+  // Filters
+  selectedJobId = 'ALL';
+  searchQuery = '';
+  stageFilter = '';
 
-  // Step 1: Department
-  departments: Department[] = [];
-  selectedDepartmentIdx = -1;
+  // Counts
+  activeCount = 0;
+  hiredCount = 0;
+  rejectedCount = 0;
 
-  // Step 2: Interviewer
-  interviewers: UserInterviewer[] = [];
-  selectedInterviewerIdx = -1;
+  // Drawer
+  showDrawer = false;
+  selectedCandidate: CandidateRow | null = null;
+  candidateSkills: Record<string, string>[] = [];
 
-  // Step 3: Slot
-  availableSlots: InterviewSlot[] = [];
-  selectedSlotIdx = -1;
+  // Inline Pipeline Modal
+  showPipelineModal = false;
+  pipelineCandidate: CandidateRow | null = null;
+  pendingStageMove: { stage_id: string; stage_name: string } | null = null;
+  isStageMoveInProgress = false;
 
-  // Step 4: Additional interviewers
-  additionalInterviewers: UserInterviewer[] = [];
-  additionalInterviewerToAdd = '';
+  // Stage icon mapping
+  private stageIcons: Record<string, string> = {
+    'applied': 'fa-file-alt',
+    'screening': 'fa-search',
+    'interview': 'fa-comments',
+    'offer': 'fa-handshake',
+    'hired': 'fa-check-circle',
+  };
 
-  // Step 5: Details
-  interviewType = '';
-  roundNumber = 1;
-  meetingLink = '';
+  private loggedInUserId = '';
 
-  private readonly NS = 'http://schemas.cordys.com/RMST1DatabaseMetadata';
+  constructor(private soap: SoapService, private router: Router) {}
 
   ngOnInit(): void {
-    this.loadApplications();
+    this.loggedInUserId = sessionStorage.getItem('loggedInUserId') || '';
+    this.loadData();
   }
 
-  // ════════════════════════════════════════════════════
-  //  LOAD APPLICATIONS (existing behaviour)
-  // ════════════════════════════════════════════════════
-  loadApplications(): void {
-    $.cordys.ajax({
-      method: 'GetTs_candidatesObjects', namespace: this.NS,
-      parameters: { fromCandidate_id: '', toCandidate_id: '' }, dataType: 'xml'
-    }).done((xmlC: any) => {
-      const rowsC = xmlC.getElementsByTagName('tuple');
-      const listC: Candidate[] = [];
-      for (let i = 0; i < rowsC.length; i++) {
-        const r = rowsC[i];
-        listC.push({
-          candidate_id: r.getElementsByTagName('candidate_id')[0]?.textContent || '',
-          first_name: r.getElementsByTagName('first_name')[0]?.textContent || '',
-          last_name: r.getElementsByTagName('last_name')[0]?.textContent || '',
-          email: r.getElementsByTagName('email')[0]?.textContent || '',
-          phone: r.getElementsByTagName('phone')[0]?.textContent || '',
-          experience_years: r.getElementsByTagName('experience_years')[0]?.textContent || '',
-          location: r.getElementsByTagName('location')[0]?.textContent || ''
-        });
-      }
-      this.candidatesList = listC;
+  async loadData(): Promise<void> {
+    this.isLoading = true;
+    try {
+      const [jobsRaw, deptsRaw, stagesRaw, skillsRaw, candidatesRaw, appsRaw] = await Promise.all([
+        this.soap.getJobRequisitions(),
+        this.soap.getDepartments(),
+        this.soap.getPipelineStages(),
+        this.soap.getSkills(),
+        this.soap.getCandidates(),
+        this.soap.getApplications()
+      ]);
 
-      $.cordys.ajax({
-        method: 'GetTs_applicationsObjects', namespace: this.NS,
-        parameters: { fromApplication_id: '', toApplication_id: '' }, dataType: 'xml'
-      }).done((xmlA: any) => {
-        const rowsA = xmlA.getElementsByTagName('tuple');
-        const listA: Application[] = [];
-        for (let i = 0; i < rowsA.length; i++) {
-          const r = rowsA[i];
-          const app: Application = {
-            application_id: r.getElementsByTagName('application_id')[0]?.textContent || '',
-            candidate_id: r.getElementsByTagName('candidate_id')[0]?.textContent || '',
-            requisition_id: r.getElementsByTagName('requisition_id')[0]?.textContent || '',
-            source: r.getElementsByTagName('source')[0]?.textContent || '',
-            status: r.getElementsByTagName('status')[0]?.textContent || '',
-            current_stage_id: r.getElementsByTagName('current_stage_id')[0]?.textContent || ''
-          };
-          const match = this.candidatesList.find(c => c.candidate_id === app.candidate_id);
-          if (match) {
-            app.candidate_name = match.first_name + ' ' + match.last_name;
-            app.candidate_email = match.email;
-          }
-          listA.push(app);
-        }
-        this.activeApplications = listA.filter(a => a.status === 'ACTIVE');
+      // Department map
+      const deptMap = new Map<string, string>();
+      deptsRaw.forEach(d => deptMap.set(d['department_id'] || '', d['department_name'] || ''));
 
-        // Dummy data for testing
-        if (this.activeApplications.length === 0) {
-          this.activeApplications.push({
-            application_id: 'APP-MOCK-001', candidate_id: 'CAN-MOCK-001', requisition_id: 'JOB-000001',
-            source: 'LinkedIn', status: 'ACTIVE', current_stage_id: 'STG-000003',
-            candidate_name: 'Jane Doe (MOCK)', candidate_email: 'jane@example.com'
-          });
-        }
+      // Jobs (only APPROVED)
+      this.jobs = jobsRaw
+        .filter(j => (j['status'] || '').toUpperCase() === 'APPROVED')
+        .map(j => ({
+          requisition_id: j['requisition_id'] || '',
+          title: j['title'] || '',
+          department_name: deptMap.get(j['department_id'] || '') || ''
+        }));
+
+      // Stages
+      this.stages = stagesRaw
+        .map(s => ({ stage_id: s['stage_id'] || '', stage_name: s['stage_name'] || '', order: parseInt(s['stage_order'] || '0', 10) }))
+        .sort((a, b) => a.order - b.order);
+
+      // Skills
+      this.skills = skillsRaw;
+
+      // Candidate map
+      const candMap = new Map<string, Record<string, string>>();
+      candidatesRaw.forEach(c => candMap.set(c['candidate_id'] || '', c));
+
+      // Stage name map
+      const stageMap = new Map<string, string>();
+      this.stages.forEach(s => stageMap.set(s.stage_id, s.stage_name));
+
+      // Build rows from applications
+      this.allCandidates = appsRaw.map(a => {
+        const cand = candMap.get(a['candidate_id'] || '');
+        const name = cand ? ((cand['first_name'] || '') + ' ' + (cand['last_name'] || '')).trim() : a['candidate_id'] || '';
+        return {
+          application_id: a['application_id'] || '',
+          candidate_id: a['candidate_id'] || '',
+          requisition_id: a['requisition_id'] || '',
+          candidate_name: name || 'Unknown',
+          candidate_email: cand?.['email'] || '',
+          candidate_phone: cand?.['phone'] || '',
+          experience_years: cand?.['experience_years'] || '',
+          location: cand?.['location'] || '',
+          source: a['source'] || '',
+          status: (a['status'] || '').toUpperCase(),
+          current_stage_id: a['current_stage_id'] || '',
+          stage_name: stageMap.get(a['current_stage_id'] || '') || 'New',
+          applied_at: a['applied_at'] || a['created_at'] || '',
+          _raw: a
+        };
       });
-    });
-  }
 
-  // ════════════════════════════════════════════════════
-  //  STAGE HELPERS
-  // ════════════════════════════════════════════════════
-  getStageName(stageId: string): string {
-    if (!stageId) return 'New';
-    if (stageId.includes('001')) return 'Screening';
-    if (stageId.includes('002')) return 'Assessment';
-    if (stageId.includes('003')) return 'Interview';
-    if (stageId.includes('004')) return 'Offer';
-    return stageId;
-  }
-
-  isInterviewStage(app: Application): boolean {
-    return this.getStageName(app.current_stage_id).toLowerCase().includes('interview');
-  }
-
-  // ════════════════════════════════════════════════════
-  //  MODAL OPEN / CLOSE
-  // ════════════════════════════════════════════════════
-  openScheduleModal(app: Application): void {
-    this.selectedApp = app;
-    this.resetForm();
-    this.showScheduleModal = true;
-    this.loadDepartments();
-  }
-
-  closeScheduleModal(): void {
-    this.showScheduleModal = false;
-    this.selectedApp = null;
-  }
-
-  resetForm(): void {
-    this.formStep = 1;
-    this.selectedDepartmentIdx = -1;
-    this.selectedInterviewerIdx = -1;
-    this.selectedSlotIdx = -1;
-    this.additionalInterviewers = [];
-    this.additionalInterviewerToAdd = '';
-    this.interviewType = '';
-    this.roundNumber = 1;
-    this.meetingLink = '';
-    this.interviewers = [];
-    this.availableSlots = [];
-  }
-
-  // ════════════════════════════════════════════════════
-  //  STEP 1: Load Departments
-  // ════════════════════════════════════════════════════
-  loadDepartments(): void {
-    $.cordys.ajax({
-      method: 'GetMt_departmentsObjects', namespace: this.NS,
-      parameters: { fromDepartment_id: '', toDepartment_id: '' }, dataType: 'xml'
-    }).done((xml: any) => {
-      const rows = xml.getElementsByTagName('tuple');
-      const list: Department[] = [];
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
-        list.push({
-          department_id: r.getElementsByTagName('department_id')[0]?.textContent || '',
-          department_name: r.getElementsByTagName('department_name')[0]?.textContent || ''
-        });
-      }
-      this.departments = list;
-
-      // Dummy data
-      if (this.departments.length === 0) {
-        this.departments.push(
-          { department_id: 'DEP-000001', department_name: 'Engineering' },
-          { department_id: 'DEP-000002', department_name: 'HR' }
-        );
-      }
-    });
-  }
-
-  // ════════════════════════════════════════════════════
-  //  STEP 2: Load Interviewers by Department
-  // ════════════════════════════════════════════════════
-  onDepartmentChange(): void {
-    this.selectedInterviewerIdx = -1;
-    this.selectedSlotIdx = -1;
-    this.availableSlots = [];
-    this.additionalInterviewers = [];
-    this.interviewers = [];
-
-    if (this.selectedDepartmentIdx < 0) { this.formStep = 1; return; }
-    this.formStep = 2;
-
-    const dept = this.departments[this.selectedDepartmentIdx];
-    const deptId = dept?.department_id || '';
-
-    $.cordys.ajax({
-      method: 'GetTs_usersObjectsFordepartment_id', namespace: this.NS,
-      parameters: { Department_id: deptId }, dataType: 'xml'
-    }).done((xml: any) => {
-      const rows = xml.getElementsByTagName('tuple');
-      const list: UserInterviewer[] = [];
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
-        const role = r.getElementsByTagName('role')[0]?.textContent || '';
-        if (role === 'INTERVIEWER') {
-          list.push({
-            user_id: r.getElementsByTagName('user_id')[0]?.textContent || '',
-            first_name: r.getElementsByTagName('first_name')[0]?.textContent || '',
-            last_name: r.getElementsByTagName('last_name')[0]?.textContent || '',
-            email: r.getElementsByTagName('email')[0]?.textContent || '',
-            role: role,
-            department_id: r.getElementsByTagName('department_id')[0]?.textContent || ''
-          });
-        }
-      }
-      this.interviewers = list;
-
-      // Dummy data
-      if (this.interviewers.length === 0) {
-        this.interviewers.push(
-          { user_id: 'USR-000010', first_name: 'John', last_name: 'Smith', email: 'john@company.com', role: 'INTERVIEWER', department_id: deptId },
-          { user_id: 'USR-000011', first_name: 'Sarah', last_name: 'Jones', email: 'sarah@company.com', role: 'INTERVIEWER', department_id: deptId }
-        );
-      }
-    });
-  }
-
-  // ════════════════════════════════════════════════════
-  //  STEP 3: Load Available Slots for Interviewer
-  // ════════════════════════════════════════════════════
-  onInterviewerChange(): void {
-    this.selectedSlotIdx = -1;
-    this.availableSlots = [];
-
-    if (this.selectedInterviewerIdx < 0) { this.formStep = 2; return; }
-    this.formStep = 3;
-
-    const interviewer = this.interviewers[this.selectedInterviewerIdx];
-    const userId = interviewer?.user_id || '';
-
-    $.cordys.ajax({
-      method: 'GetTs_interview_slotsObjectsForcreated_by_user', namespace: this.NS,
-      parameters: { Created_by_user: userId }, dataType: 'xml'
-    }).done((xml: any) => {
-      const rows = xml.getElementsByTagName('tuple');
-      const list: InterviewSlot[] = [];
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i];
-        const t1 = r.getElementsByTagName('temp1')[0]?.textContent || '0';
-        if (t1 === '0') {
-          list.push({
-            slot_id: r.getElementsByTagName('slot_id')[0]?.textContent || '',
-            slot_date: r.getElementsByTagName('slot_date')[0]?.textContent || '',
-            start_time: r.getElementsByTagName('start_time')[0]?.textContent || '',
-            end_time: r.getElementsByTagName('end_time')[0]?.textContent || '',
-            created_by_user: r.getElementsByTagName('created_by_user')[0]?.textContent || '',
-            temp1: t1
-          });
-        }
-      }
-      this.availableSlots = list;
-
-      // Dummy data
-      if (this.availableSlots.length === 0) {
-        this.availableSlots.push(
-          { slot_id: 'SLT-MOCK-001', slot_date: '2026-04-01', start_time: '10:00', end_time: '11:00', created_by_user: userId, temp1: '0' },
-          { slot_id: 'SLT-MOCK-002', slot_date: '2026-04-02', start_time: '14:00', end_time: '15:00', created_by_user: userId, temp1: '0' }
-        );
-      }
-    });
-  }
-
-  // ════════════════════════════════════════════════════
-  //  STEP 3b: Slot selected → show remaining fields
-  // ════════════════════════════════════════════════════
-  onSlotChange(): void {
-    if (this.selectedSlotIdx < 0) { this.formStep = 3; return; }
-    this.formStep = 4;
-  }
-
-  // ════════════════════════════════════════════════════
-  //  STEP 4: Additional Interviewers
-  // ════════════════════════════════════════════════════
-  get selectedInterviewer(): UserInterviewer | null {
-    return this.selectedInterviewerIdx >= 0 ? this.interviewers[this.selectedInterviewerIdx] : null;
-  }
-
-  get selectedSlot(): InterviewSlot | null {
-    return this.selectedSlotIdx >= 0 ? this.availableSlots[this.selectedSlotIdx] : null;
-  }
-
-  get remainingInterviewers(): UserInterviewer[] {
-    const primary = this.selectedInterviewer;
-    const usedIds = new Set([...(primary ? [primary.user_id] : []), ...this.additionalInterviewers.map(a => a.user_id)]);
-    return this.interviewers.filter(u => !usedIds.has(u.user_id));
-  }
-
-  addInterviewer(): void {
-    if (!this.additionalInterviewerToAdd) return;
-    const user = this.interviewers.find(u => u.user_id === this.additionalInterviewerToAdd);
-    if (user) {
-      this.additionalInterviewers.push(user);
-      this.additionalInterviewerToAdd = '';
+      this.computeCounts();
+      this.applyFilters();
+    } catch (err) {
+      console.error('Failed to load candidates data:', err);
+    } finally {
+      this.isLoading = false;
     }
   }
 
-  removeAdditionalInterviewer(idx: number): void {
-    this.additionalInterviewers.splice(idx, 1);
+  // ═══════════════════════════════════════════════════
+  //  FILTERING
+  // ═══════════════════════════════════════════════════
+
+  computeCounts(): void {
+    const jobFiltered = this.selectedJobId === 'ALL'
+      ? this.allCandidates
+      : this.allCandidates.filter(c => c.requisition_id === this.selectedJobId);
+    this.activeCount = jobFiltered.filter(c => c.status === 'ACTIVE').length;
+    this.hiredCount = jobFiltered.filter(c => c.status === 'HIRED').length;
+    this.rejectedCount = jobFiltered.filter(c => c.status === 'REJECTED').length;
   }
 
-  // ════════════════════════════════════════════════════
-  //  STEP 5: Meeting Link
-  // ════════════════════════════════════════════════════
-  generateMeetingLink(): void {
-    const id = Math.random().toString(36).substring(2, 8);
-    this.meetingLink = 'https://meet.example.com/int-' + id;
+  onJobChange(): void {
+    this.computeCounts();
+    this.applyFilters();
   }
 
-  // ════════════════════════════════════════════════════
-  //  VALIDATION
-  // ════════════════════════════════════════════════════
-  canSchedule(): boolean {
-    return !!(this.selectedApp && this.selectedSlot && this.selectedInterviewer && this.interviewType);
-  }
+  applyFilters(): void {
+    let list = this.allCandidates;
 
-  // ════════════════════════════════════════════════════
-  //  SCHEDULE: 3-step save
-  //  1. UpdateTs_interviews (INSERT)
-  //  2. UpdateTs_interviewers (INSERT per interviewer)
-  //  3. UpdateTs_interview_slots (mark booked)
-  // ════════════════════════════════════════════════════
-  scheduleInterview(): void {
-    if (!this.canSchedule()) {
-      alert('Please complete all required fields.');
-      return;
+    // Tab filter
+    if (this.activeTab === 'active') list = list.filter(c => c.status === 'ACTIVE');
+    else if (this.activeTab === 'hired') list = list.filter(c => c.status === 'HIRED');
+    else if (this.activeTab === 'rejected') list = list.filter(c => c.status === 'REJECTED');
+
+    // Job filter
+    if (this.selectedJobId !== 'ALL') {
+      list = list.filter(c => c.requisition_id === this.selectedJobId);
     }
 
-    const slot = this.selectedSlot!;
-    const interviewer = this.selectedInterviewer!;
-    this.isScheduling = true;
+    // Stage filter
+    if (this.stageFilter) {
+      list = list.filter(c => c.current_stage_id === this.stageFilter);
+    }
 
-    // Step 1: Create interview record
-    $.cordys.ajax({
-      method: 'UpdateTs_interviews', namespace: this.NS,
-      parameters: {
-        tuple: {
-          'new': {
-            ts_interviews: {
-              interview_id: '',
-              application_id: this.selectedApp!.application_id,
-              interview_type: this.interviewType,
-              round_number: this.roundNumber.toString(),
-              slot_id: slot.slot_id,
-              meeting_link: this.meetingLink,
-              status: 'SCHEDULED',
-              created_by_user: '',
-              temp1: '', temp2: '', temp3: '', temp4: '', temp5: ''
-            }
-          }
-        }
-      },
-      dataType: 'xml'
-    })
-    .done((responseXml: any) => {
-      // Try to extract the generated interview_id from the response
-      const intId = responseXml.getElementsByTagName('interview_id')[0]?.textContent || '';
+    // Search
+    if (this.searchQuery.trim()) {
+      const q = this.searchQuery.toLowerCase();
+      list = list.filter(c =>
+        c.candidate_name.toLowerCase().includes(q) ||
+        c.candidate_email.toLowerCase().includes(q) ||
+        c.source.toLowerCase().includes(q)
+      );
+    }
 
-      // Step 2: Insert all interviewers (primary + additional)
-      const allInterviewerIds = [interviewer.user_id, ...this.additionalInterviewers.map(a => a.user_id)];
-      allInterviewerIds.forEach(userId => {
-        $.cordys.ajax({
-          method: 'UpdateTs_interviewers', namespace: this.NS,
-          parameters: {
-            tuple: {
-              'new': {
-                ts_interviewers: {
-                  interview_id: intId,
-                  user_id: userId,
-                  temp1: '', temp2: '', temp3: '', temp4: '', temp5: ''
-                }
-              }
-            }
-          },
-          dataType: 'xml'
-        });
-      });
-
-      // Step 3: Mark slot as booked (temp1 = '1')
-      this.markSlotBooked(slot);
-
-      alert('Interview scheduled successfully!');
-      this.closeScheduleModal();
-      this.isScheduling = false;
-    })
-    .fail((err: any) => {
-      console.error('Failed to schedule interview:', err);
-      alert('Failed to schedule interview. Check console.');
-      this.isScheduling = false;
-    });
+    this.filteredCandidates = list;
   }
 
-  markSlotBooked(slot: InterviewSlot): void {
-    $.cordys.ajax({
-      method: 'UpdateTs_interview_slots', namespace: this.NS,
-      parameters: {
-        tuple: {
-          old: {
-            ts_interview_slots: {
-              slot_id: slot.slot_id, slot_date: slot.slot_date, start_time: slot.start_time, end_time: slot.end_time,
-              created_by_user: slot.created_by_user, temp1: '0', temp2: '', temp3: '', temp4: '', temp5: ''
-            }
-          },
-          'new': {
-            ts_interview_slots: {
-              slot_id: slot.slot_id, slot_date: slot.slot_date, start_time: slot.start_time, end_time: slot.end_time,
-              created_by_user: slot.created_by_user, temp1: '1', temp2: '', temp3: '', temp4: '', temp5: ''
-            }
-          }
-        }
-      },
-      dataType: 'xml'
-    });
+  // ═══════════════════════════════════════════════════
+  //  PROFILE DRAWER
+  // ═══════════════════════════════════════════════════
+
+  async openProfile(c: CandidateRow): Promise<void> {
+    this.selectedCandidate = c;
+    this.showDrawer = true;
+    try {
+      this.candidateSkills = await this.soap.getCandidateSkills(c.candidate_id);
+    } catch { this.candidateSkills = []; }
+  }
+
+  closeDrawer(): void {
+    this.showDrawer = false;
+    this.selectedCandidate = null;
+    this.candidateSkills = [];
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  INLINE PIPELINE MODAL
+  // ═══════════════════════════════════════════════════
+
+  openPipelineModal(c: CandidateRow): void {
+    this.pipelineCandidate = c;
+    this.pendingStageMove = null;
+    this.showPipelineModal = true;
+  }
+
+  closePipelineModal(): void {
+    this.showPipelineModal = false;
+    this.pipelineCandidate = null;
+    this.pendingStageMove = null;
+  }
+
+  getStageIcon(stageName: string): string {
+    return this.stageIcons[stageName.toLowerCase()] || 'fa-circle';
+  }
+
+  getPipelineProgress(): string {
+    if (!this.pipelineCandidate || this.stages.length <= 1) return '0%';
+    const idx = this.stages.findIndex(s => s.stage_id === this.pipelineCandidate!.current_stage_id);
+    if (idx < 0) return '0%';
+    return ((idx / (this.stages.length - 1)) * 100) + '%';
+  }
+
+  getPipelineStageStatus(stage: { stage_id: string; stage_name?: string }): 'completed' | 'current' | 'pending' {
+    if (!this.pipelineCandidate) return 'pending';
+    const currentOrder = this.stages.find(s => s.stage_id === this.pipelineCandidate!.current_stage_id)?.order || 0;
+    const stageOrder = this.stages.find(s => s.stage_id === stage.stage_id)?.order || 0;
+    if (stage.stage_id === this.pipelineCandidate.current_stage_id) return 'current';
+    if (stageOrder < currentOrder) return 'completed';
+    return 'pending';
+  }
+
+  onPipelineStageClick(stage: { stage_id: string; stage_name: string }): void {
+    if (!this.pipelineCandidate || stage.stage_id === this.pipelineCandidate.current_stage_id) return;
+    this.pendingStageMove = { stage_id: stage.stage_id, stage_name: stage.stage_name };
+  }
+
+  async confirmStageMove(): Promise<void> {
+    if (!this.pipelineCandidate || !this.pendingStageMove) return;
+    const c = this.pipelineCandidate;
+    const fromStageId = c.current_stage_id;
+    const toStageId = this.pendingStageMove.stage_id;
+    const toStageName = this.pendingStageMove.stage_name;
+    this.isStageMoveInProgress = true;
+
+    try {
+      await this.soap.updateApplicationStage(c._raw, toStageId);
+      await this.soap.insertStageHistory({
+        application_id: c.application_id,
+        from_stage_id: fromStageId,
+        to_stage_id: toStageId,
+        changed_by: this.loggedInUserId,
+        comments: ''
+      });
+
+      // Update local state
+      c.current_stage_id = toStageId;
+      c.stage_name = toStageName;
+      c._raw['current_stage_id'] = toStageId;
+      this.pendingStageMove = null;
+      this.applyFilters(); // refresh table
+    } catch (err) {
+      console.error('Stage move failed:', err);
+      alert('Failed to move candidate. Please try again.');
+    } finally {
+      this.isStageMoveInProgress = false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  NAVIGATION (kept for pipeline board page link)
+  // ═══════════════════════════════════════════════════
+
+  goToPipeline(requisitionId: string): void {
+    this.closeDrawer();
+    this.router.navigate(['/hr/pipeline'], { queryParams: { job: requisitionId } });
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  HELPERS
+  // ═══════════════════════════════════════════════════
+
+  getJobTitle(reqId: string): string {
+    return this.jobs.find(j => j.requisition_id === reqId)?.title || reqId;
+  }
+
+  getSkillName(skillId: string): string {
+    return this.skills.find(s => s['skill_id'] === skillId)?.['skill_name'] || skillId;
+  }
+
+  getInitials(name: string): string {
+    return name.split(' ').map(w => w.charAt(0)).slice(0, 2).join('').toUpperCase();
+  }
+
+  formatDate(d: string): string {
+    if (!d) return '';
+    return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   }
 }

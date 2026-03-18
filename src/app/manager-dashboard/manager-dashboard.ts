@@ -12,10 +12,18 @@ interface PendingApproval {
   requested_at: string;
   comments: string;
   // Enriched from ts_job_requisitions
-  job_title?: string;
-  department_name?: string;
-  requester_name?: string;
-  // Raw data for update calls
+  job_title: string;
+  department_name: string;
+  requester_name: string;
+  experience_range: string;
+  salary_range: string;
+  open_positions: string;
+  description: string;
+  posting_source: string;
+  // delegation
+  delegated_to: string[];
+  is_delegated: boolean;
+  // Raw data
   _raw: Record<string, string>;
 }
 
@@ -32,13 +40,22 @@ export class ManagerDashboard implements OnInit {
   pendingApprovals: PendingApproval[] = [];
   allApprovals: PendingApproval[] = [];
   loggedInUserId = '';
+  loggedInUserRole = '';
 
   // ─── Stats ──────────────────────────────────────
-  overviewStats = [
-    { label: 'Pending Approvals', value: '0', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', colorClass: 'text-warning' },
-    { label: 'Approved This Month', value: '0', icon: 'M5 13l4 4L19 7', colorClass: 'text-success' },
-    { label: 'Rejected', value: '0', icon: 'M6 18L18 6M6 6l12 12', colorClass: 'text-danger' },
-  ];
+  stats = {
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    delegated: 0,
+    total: 0
+  };
+
+  // Chart data
+  chartSegments: { color: string; percent: number; label: string; count: number }[] = [];
+
+  // ─── Expanded card ──────────────────────────────
+  expandedApprovalId: string | null = null;
 
   // ─── Action Modal ──────────────────────────────
   showActionModal = false;
@@ -46,6 +63,16 @@ export class ManagerDashboard implements OnInit {
   actionApproval: PendingApproval | null = null;
   actionComments = '';
   isActioning = false;
+
+  // ─── Delegate Modal ───────────────────────────
+  showDelegateModal = false;
+  delegateApproval: PendingApproval | null = null;
+  delegateUsers: { user_id: string; name: string; selected: boolean }[] = [];
+  allUsers: { user_id: string; name: string }[] = [];
+  isDelegating = false;
+
+  // ─── Filter ───────────────────────────────────
+  filterStatus = 'PENDING';
 
   // ─── Toast ──────────────────────────────────────
   toastMessage = '';
@@ -57,6 +84,7 @@ export class ManagerDashboard implements OnInit {
 
   ngOnInit(): void {
     this.loggedInUserId = sessionStorage.getItem('loggedInUserId') || '';
+    this.loggedInUserRole = sessionStorage.getItem('loggedInUserRole') || '';
     this.loadApprovals();
   }
 
@@ -67,27 +95,61 @@ export class ManagerDashboard implements OnInit {
   async loadApprovals(): Promise<void> {
     this.isLoading = true;
     try {
-      const rows = await this.soap.getApprovals();
+      const [rows, depts, users, jobs] = await Promise.all([
+        this.soap.getApprovals(),
+        this.soap.getDepartments(),
+        this.soap.getUsers(),
+        this.soap.getJobRequisitions()
+      ]);
 
-      // Map all approval records
-      this.allApprovals = rows.map(r => ({
-        approval_id: r['approval_id'] || '',
-        entity_type: r['entity_type'] || '',
-        entity_id: r['entity_id'] || '',
-        status: r['status'] || '',
-        requested_by: r['requested_by'] || '',
-        requested_at: r['requested_at'] || '',
-        comments: r['comments'] || '',
-        _raw: r
-      }));
+      const deptMap = new Map<string, string>();
+      depts.forEach(d => deptMap.set(d['department_id'] || '', d['department_name'] || ''));
 
-      // Filter pending ones
+      const userMap = new Map<string, string>();
+      users.forEach(u => {
+        const name = ((u['first_name'] || u['First_name'] || '') + ' ' + (u['last_name'] || u['Last_name'] || '')).trim();
+        userMap.set(u['user_id'] || u['User_id'] || '', name || u['email'] || u['Email'] || '');
+      });
+
+      this.allUsers = users.map(u => ({
+        user_id: u['user_id'] || u['User_id'] || '',
+        name: ((u['first_name'] || u['First_name'] || '') + ' ' + (u['last_name'] || u['Last_name'] || '')).trim()
+      })).filter(u => u.user_id !== this.loggedInUserId);
+
+      const jobMap = new Map<string, Record<string, string>>();
+      jobs.forEach(j => jobMap.set(j['requisition_id'] || '', j));
+
+      this.allApprovals = rows.map(r => {
+        const job = jobMap.get(r['entity_id'] || '') || {};
+        const salMin = job['salary_min'] || '';
+        const salMax = job['salary_max'] || '';
+        const salCur = job['salary_currency'] || 'LPA';
+        const expMin = job['experience_min'] || '';
+        const expMax = job['experience_max'] || '';
+
+        return {
+          approval_id: r['approval_id'] || '',
+          entity_type: r['entity_type'] || '',
+          entity_id: r['entity_id'] || '',
+          status: r['status'] || '',
+          requested_by: r['requested_by'] || '',
+          requested_at: r['requested_at'] || r['created_at'] || '',
+          comments: r['comments'] || '',
+          job_title: job['title'] || r['entity_id'] || '',
+          department_name: deptMap.get(job['department_id'] || '') || '',
+          requester_name: userMap.get(r['requested_by'] || '') || r['requested_by'] || '',
+          experience_range: (expMin || expMax) ? `${expMin || '0'} – ${expMax || 'Any'} yrs` : '',
+          salary_range: (salMin || salMax) ? `${salMin} – ${salMax} ${salCur}` : '',
+          open_positions: job['open_positions'] || '',
+          description: job['description'] || '',
+          posting_source: job['posting_source'] || '',
+          delegated_to: [],
+          is_delegated: false,
+          _raw: r
+        };
+      });
+
       this.pendingApprovals = this.allApprovals.filter(a => a.status === 'PENDING');
-
-      // Enrich with job details
-      await this.enrichApprovals();
-
-      // Update stats
       this.updateStats();
     } catch (err) {
       console.error('Failed to load approvals:', err);
@@ -97,65 +159,70 @@ export class ManagerDashboard implements OnInit {
     }
   }
 
-  private async enrichApprovals(): Promise<void> {
-    // Load all departments for mapping
-    let deptMap = new Map<string, string>();
-    try {
-      const depts = await this.soap.getDepartments();
-      depts.forEach(d => deptMap.set(d['department_id'] || '', d['department_name'] || ''));
-    } catch (e) { /* ignore */ }
-
-    // Load all users for requester name mapping
-    let userMap = new Map<string, string>();
-    try {
-      const users = await this.soap.getUsers();
-      users.forEach(u => {
-        const name = ((u['first_name'] || '') + ' ' + (u['last_name'] || '')).trim();
-        userMap.set(u['user_id'] || '', name || u['email'] || u['user_id'] || '');
-      });
-    } catch (e) { /* ignore */ }
-
-    // For each pending approval of type REQUISITION, load the job details
-    for (const approval of this.allApprovals) {
-      // Set requester name
-      approval.requester_name = userMap.get(approval.requested_by) || approval.requested_by;
-
-      if (approval.entity_type === 'REQUISITION' && approval.entity_id) {
-        try {
-          const job = await this.soap.getJobRequisitionById(approval.entity_id);
-          if (job) {
-            approval.job_title = job['title'] || approval.entity_id;
-            approval.department_name = deptMap.get(job['department_id'] || '') || job['department_id'] || '';
-          }
-        } catch (e) {
-          approval.job_title = approval.entity_id;
-        }
-      }
-    }
+  private updateStats(): void {
+    this.stats.pending = this.allApprovals.filter(a => a.status === 'PENDING').length;
+    this.stats.approved = this.allApprovals.filter(a => a.status === 'APPROVED').length;
+    this.stats.rejected = this.allApprovals.filter(a => a.status === 'REJECTED').length;
+    this.stats.delegated = this.allApprovals.filter(a => a.delegated_to.length > 0).length;
+    this.stats.total = this.allApprovals.length;
+    this.buildChart();
   }
 
-  private updateStats(): void {
-    const pending = this.allApprovals.filter(a => a.status === 'PENDING').length;
-    const approved = this.allApprovals.filter(a => a.status === 'APPROVED').length;
-    const rejected = this.allApprovals.filter(a => a.status === 'REJECTED').length;
+  private buildChart(): void {
+    const total = this.stats.total || 1;
+    this.chartSegments = [
+      { color: '#f59e0b', percent: (this.stats.pending / total) * 100, label: 'Pending', count: this.stats.pending },
+      { color: '#10b981', percent: (this.stats.approved / total) * 100, label: 'Approved', count: this.stats.approved },
+      { color: '#ef4444', percent: (this.stats.rejected / total) * 100, label: 'Rejected', count: this.stats.rejected },
+    ];
+  }
 
-    this.overviewStats[0].value = pending.toString();
-    this.overviewStats[1].value = approved.toString();
-    this.overviewStats[2].value = rejected.toString();
+  getChartDasharray(seg: { percent: number }): string {
+    const circumference = 2 * Math.PI * 45;
+    const filled = (seg.percent / 100) * circumference;
+    return `${filled} ${circumference - filled}`;
+  }
+
+  getChartOffset(index: number): number {
+    const circumference = 2 * Math.PI * 45;
+    let offset = circumference * 0.25; // start from top
+    for (let i = 0; i < index; i++) {
+      offset -= (this.chartSegments[i].percent / 100) * circumference;
+    }
+    return offset;
+  }
+
+  get filteredApprovals(): PendingApproval[] {
+    if (this.filterStatus === 'ALL') return this.allApprovals;
+    return this.allApprovals.filter(a => a.status === this.filterStatus);
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  EXPAND / COLLAPSE CARD
+  // ═══════════════════════════════════════════════════
+
+  toggleExpand(approval: PendingApproval): void {
+    this.expandedApprovalId = this.expandedApprovalId === approval.approval_id ? null : approval.approval_id;
+  }
+
+  isExpanded(approval: PendingApproval): boolean {
+    return this.expandedApprovalId === approval.approval_id;
   }
 
   // ═══════════════════════════════════════════════════
   //  APPROVE / REJECT ACTIONS
   // ═══════════════════════════════════════════════════
 
-  openApproveModal(approval: PendingApproval): void {
+  openApproveModal(approval: PendingApproval, event: Event): void {
+    event.stopPropagation();
     this.actionType = 'APPROVED';
     this.actionApproval = approval;
     this.actionComments = '';
     this.showActionModal = true;
   }
 
-  openRejectModal(approval: PendingApproval): void {
+  openRejectModal(approval: PendingApproval, event: Event): void {
+    event.stopPropagation();
     this.actionType = 'REJECTED';
     this.actionApproval = approval;
     this.actionComments = '';
@@ -170,7 +237,6 @@ export class ManagerDashboard implements OnInit {
   async confirmAction(): Promise<void> {
     if (!this.actionApproval) return;
 
-    // Reject action requires comments
     if (this.actionType === 'REJECTED' && !this.actionComments.trim()) {
       this.showToast('Please provide a reason for rejection.', 'error');
       return;
@@ -179,7 +245,6 @@ export class ManagerDashboard implements OnInit {
     this.isActioning = true;
 
     try {
-      // Step 1: Update ts_approvals status
       await this.soap.updateApprovalStatus(
         this.actionApproval._raw,
         this.actionType,
@@ -187,8 +252,7 @@ export class ManagerDashboard implements OnInit {
         this.actionComments.trim()
       );
 
-      // Step 2: Update ts_job_requisitions status (if it's a REQUISITION approval)
-      if (this.actionApproval.entity_type === 'REQUISITION') {
+      if (this.actionApproval.entity_type === 'REQUISITION' || this.actionApproval.entity_type === 'Job Requisition') {
         const jobData = await this.soap.getJobRequisitionById(this.actionApproval.entity_id);
         if (jobData) {
           const newJobStatus = this.actionType === 'APPROVED' ? 'APPROVED' : 'CLOSED';
@@ -197,7 +261,7 @@ export class ManagerDashboard implements OnInit {
       }
 
       const label = this.actionType === 'APPROVED' ? 'approved' : 'rejected';
-      this.showToast(`Requisition ${this.actionApproval.entity_id} has been ${label}.`, 'success');
+      this.showToast(`"${this.actionApproval.job_title}" has been ${label}.`, 'success');
 
       this.closeActionModal();
       await this.loadApprovals();
@@ -208,6 +272,66 @@ export class ManagerDashboard implements OnInit {
     } finally {
       this.isActioning = false;
     }
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  DELEGATION
+  // ═══════════════════════════════════════════════════
+
+  openDelegateModal(approval: PendingApproval, event: Event): void {
+    event.stopPropagation();
+    if (approval.is_delegated) {
+      this.showToast('This task was delegated to you. You cannot delegate it further.', 'error');
+      return;
+    }
+    this.delegateApproval = approval;
+    this.delegateUsers = this.allUsers.map(u => ({
+      ...u,
+      selected: approval.delegated_to.includes(u.user_id)
+    }));
+    this.showDelegateModal = true;
+  }
+
+  closeDelegateModal(): void {
+    this.showDelegateModal = false;
+    this.delegateApproval = null;
+  }
+
+  toggleDelegateUser(user: { user_id: string; name: string; selected: boolean }): void {
+    user.selected = !user.selected;
+  }
+
+  get selectedDelegateCount(): number {
+    return this.delegateUsers.filter(u => u.selected).length;
+  }
+
+  async confirmDelegate(): Promise<void> {
+    if (!this.delegateApproval) return;
+    const selected = this.delegateUsers.filter(u => u.selected).map(u => u.user_id);
+    if (selected.length === 0) {
+      this.showToast('Please select at least one user to delegate to.', 'error');
+      return;
+    }
+
+    this.isDelegating = true;
+    try {
+      // In a real system, this would create delegation records via SOAP
+      // For mock mode, we just update the local data
+      this.delegateApproval.delegated_to = selected;
+      const names = this.delegateUsers.filter(u => u.selected).map(u => u.name).join(', ');
+      this.showToast(`Task delegated to: ${names}`, 'success');
+      this.closeDelegateModal();
+    } catch (err) {
+      this.showToast('Failed to delegate task.', 'error');
+    } finally {
+      this.isDelegating = false;
+    }
+  }
+
+  getDelegateNames(approval: PendingApproval): string {
+    return approval.delegated_to
+      .map(id => this.allUsers.find(u => u.user_id === id)?.name || id)
+      .join(', ');
   }
 
   // ═══════════════════════════════════════════════════

@@ -9,7 +9,7 @@
   <!-- Search & Filters -->
   <div class="filter-bar">
     <div class="search-field">
-      <span class="search-icon">🔍</span>
+      <span class="search-icon"><i class="fas fa-search"></i></span>
       <input type="text" placeholder="Search by title, skill, keyword..."
              [(ngModel)]="searchQuery" (ngModelChange)="applyFilters()">
     </div>
@@ -25,7 +25,7 @@
       <option value="10">0 – 10 years</option>
     </select>
     <button class="clear-btn" (click)="clearFilters()" *ngIf="searchQuery || departmentFilter || experienceFilter">
-      ✕ Clear
+      <i class="fas fa-times"></i> Clear
     </button>
   </div>
 
@@ -37,7 +37,7 @@
 
   <!-- Empty -->
   <div class="empty-state" *ngIf="!isLoading && filteredJobs.length === 0">
-    <div class="empty-icon">📋</div>
+    <i class="fas fa-clipboard-list" style="font-size:48px; color:#cbd5e1; margin-bottom:12px; display:block"></i>
     <h3>No jobs match your criteria</h3>
     <p *ngIf="allJobs.length === 0">No approved jobs are available right now. Check back soon!</p>
     <p *ngIf="allJobs.length > 0">Try adjusting your search or filters.</p>
@@ -61,16 +61,16 @@
 
       <div class="job-meta">
         <span class="meta-item" *ngIf="job.experience_min || job.experience_max">
-          📊 {{ job.experience_min || '0' }} – {{ job.experience_max || 'Any' }} yrs
+          <i class="fas fa-chart-bar"></i> {{ job.experience_min || '0' }} – {{ job.experience_max || 'Any' }} yrs
         </span>
         <span class="meta-item" *ngIf="job.salary_min || job.salary_max">
-          💰 {{ formatSalary(job.salary_min, job.salary_max, job.salary_currency) }}
+          <i class="fas fa-money-bill-wave"></i> {{ formatSalary(job.salary_min, job.salary_max, job.salary_currency) }}
         </span>
         <span class="meta-item">
-          👥 {{ job.open_positions }} {{ +job.open_positions === 1 ? 'position' : 'positions' }}
+          <i class="fas fa-users"></i> {{ job.open_positions }} {{ +job.open_positions === 1 ? 'position' : 'positions' }}
         </span>
         <span class="meta-item" *ngIf="job.posting_source">
-          📌 {{ job.posting_source }}
+          <i class="fas fa-map-pin"></i> {{ job.posting_source }}
         </span>
       </div>
 

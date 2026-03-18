@@ -103,6 +103,7 @@ export const routes: Routes = [
       { path: 'jobs', loadComponent: () => import('./hr-dashboard/jobs/jobs').then(m => m.JobsTab) },
       { path: 'candidates', loadComponent: () => import('./hr-dashboard/candidates/candidates').then(m => m.CandidatesTab) },
       { path: 'pipeline', loadComponent: () => import('./hr-dashboard/pipeline-board/pipeline-board').then(m => m.PipelineBoardComponent) },
+      { path: 'offers', loadComponent: () => import('./hr-dashboard/offers/offers').then(m => m.OffersTab) },
       { path: 'referrals', loadComponent: () => import('./hr-dashboard/referrals/referrals').then(m => m.ReferralsTab) },
       { path: 'report', loadComponent: () => import('./hr-dashboard/report/report').then(m => m.ReportTab) },
       { path: 'settings', loadComponent: () => import('./hr-dashboard/settings/settings').then(m => m.SettingsTab) },
@@ -142,6 +143,11 @@ export const routes: Routes = [
         path: 'interviews',
         loadComponent: () =>
           import('./manager-dashboard/manager-interviews/manager-interviews').then((m) => m.ManagerInterviews),
+      },
+      {
+        path: 'delegates',
+        loadComponent: () =>
+          import('./manager-dashboard/manager-delegates/manager-delegates').then((m) => m.ManagerDelegates),
       }
     ]
   },
