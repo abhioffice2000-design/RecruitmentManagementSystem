@@ -28,6 +28,7 @@ export class LoginComponent implements OnInit {
   // Show/hide password
   showPassword = false;
   isLoading = false;
+  private loginSucceeded = false;
 
   constructor(private router: Router, private ngZone: NgZone) {}
 
@@ -125,6 +126,7 @@ export class LoginComponent implements OnInit {
     authPromise
       .done(function () {
         console.log('Login success, fetching role...');
+        self.loginSucceeded = true;
         self.ngZone.run(() => {
           self.fetchRole(self.data.user);
         });
@@ -137,6 +139,7 @@ export class LoginComponent implements OnInit {
 
     // Fallback timeout in case neither callback fires
     setTimeout(() => {
+      if (self.loginSucceeded) return; // Auth already succeeded, skip fallback
       if (
         window.location.pathname === '/' ||
         window.location.pathname === '/login'

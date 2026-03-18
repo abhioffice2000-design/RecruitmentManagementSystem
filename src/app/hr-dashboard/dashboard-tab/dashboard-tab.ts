@@ -96,7 +96,7 @@ import { Component } from '@angular/core';
               <td>
                 <div class="emp-name"><img src="https://via.placeholder.com/30"> Steven Bing</div>
               </td>
-              <td>steven.bing@example.com</td>
+              <td>steven.bing&#64;example.com</td>
               <td>Designer</td>
               <td><span class="tag onboarding">Onboarding</span></td>
             </tr>
@@ -104,7 +104,7 @@ import { Component } from '@angular/core';
               <td>
                 <div class="emp-name"><img src="https://via.placeholder.com/30"> Wade Warren</div>
               </td>
-              <td>wwarren@example.com</td>
+              <td>wwarren&#64;example.com</td>
               <td>Frontend Developer</td>
               <td><span class="tag declined">Declined</span></td>
             </tr>
@@ -112,7 +112,7 @@ import { Component } from '@angular/core';
               <td>
                 <div class="emp-name"><img src="https://via.placeholder.com/30"> Jane Cooper</div>
               </td>
-              <td>janecooper22@example.com</td>
+              <td>janecooper22&#64;example.com</td>
               <td>User</td>
               <td><span class="tag active">Active</span></td>
             </tr>
