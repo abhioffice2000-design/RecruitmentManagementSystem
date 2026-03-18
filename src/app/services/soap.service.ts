@@ -1,6 +1,7 @@
 import { Injectable, NgZone } from '@angular/core';
 import { HeroService } from '../hero.service';
-import { MOCK_DEPARTMENTS, MOCK_SKILLS, MOCK_USERS, MOCK_JOB_REQUISITIONS, MOCK_APPROVALS, MOCK_JOB_SKILLS, MOCK_PIPELINE_STAGES, MOCK_CANDIDATES, MOCK_CANDIDATE_SKILLS,  MOCK_APPLICATIONS,
+import {
+  MOCK_DEPARTMENTS, MOCK_SKILLS, MOCK_USERS, MOCK_JOB_REQUISITIONS, MOCK_APPROVALS, MOCK_JOB_SKILLS, MOCK_PIPELINE_STAGES, MOCK_CANDIDATES, MOCK_CANDIDATE_SKILLS, MOCK_APPLICATIONS,
   MOCK_OFFERS,
   MOCK_DELEGATES
 } from './mock-data';
@@ -18,7 +19,7 @@ export class SoapService {
 
   private readonly NS = 'http://schemas.cordys.com/RMST1DatabaseMetadata';
 
-  constructor(private ngZone: NgZone, private hero: HeroService) {}
+  constructor(private ngZone: NgZone, private hero: HeroService) { }
 
   // ═══════════════════════════════════════════════════════
   //  GENERIC HELPERS
@@ -27,8 +28,9 @@ export class SoapService {
   /**
    * Execute a Cordys SOAP call and return a Promise.
    * @param method  SOAP method name
-   * @param params  Parameters object
+   * @param params  Parameters object or XML string
    * @param ns      Namespace (defaults to RMST1DatabaseMetadata)
+   * @param attributes Optional attributes for the method element (e.g. {reply: 'yes'})
    */
   call(method: string, params: any, ns?: string): Promise<any> {
     return this.hero.ajax(method, ns || this.NS, params);
@@ -80,6 +82,48 @@ export class SoapService {
     }).then(resp => this.parseTuples(resp, 'mt_departments'));
   }
 
+  /**
+   * Fetch all departments from the database.
+   * Uses the GetAllDepartments SOAP method.
+   */
+  getAllDepartments(): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve(MOCK_DEPARTMENTS);
+    return this.call('GetAllDepartments', {}).then(xml => this.parseTuples(xml));
+  }
+
+  insertDepartment(data: {
+    department_name: string;
+    created_by: string;
+  }): Promise<any> {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    if (this.useMockData) {
+      MOCK_DEPARTMENTS.push({
+        department_id: 'D' + String(MOCK_DEPARTMENTS.length + 1).padStart(2, '0'),
+        department_name: data.department_name,
+        manager_id: ''
+      });
+      return Promise.resolve({ success: true });
+    }
+    return this.call('UpdateMt_departments', {
+      tuple: {
+        'new': {
+          mt_departments: {
+            '@qAccess': '0',
+            '@qConstraint': '0',
+            '@qInit': '0',
+            '@qValues': '',
+            department_name: data.department_name,
+            created_at: now,
+            created_by: data.created_by,
+            updated_at: now,
+            updated_by: data.created_by,
+            temp1: '', temp2: '', temp3: '', temp4: '', temp5: ''
+          }
+        }
+      }
+    }, undefined,);
+  }
+
   // ═══════════════════════════════════════════════════════
   //  SKILLS
   // ═══════════════════════════════════════════════════════
@@ -102,6 +146,33 @@ export class SoapService {
     }).then(resp => this.parseTuples(resp, 'ts_users'));
   }
 
+  getAllManagers(): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve(MOCK_USERS.filter((u: any) => u.Role === 'MANAGER' || u.Role === 'LEADERSHIP'));
+    return this.call('GetAllManagers', {
+      preserveSpace: 'no',
+      qAccess: '0',
+      qValues: ''
+    }).then(xml => this.parseTuples(xml));
+  }
+
+  getAllHR(): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve(MOCK_USERS.filter((u: any) => u.Role === 'HR'));
+    return this.call('GetAllHR', {
+      preserveSpace: 'no',
+      qAccess: '0',
+      qValues: ''
+    }).then(xml => this.parseTuples(xml));
+  }
+
+  getAllInterviewers(): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve(MOCK_USERS.filter((u: any) => u.Role === 'INTERVIEWER'));
+    return this.call('GetAllInterviewers', {
+      preserveSpace: 'no',
+      qAccess: '0',
+      qValues: ''
+    }).then(xml => this.parseTuples(xml));
+  }
+
   getUsersByDepartment(departmentId: string): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_USERS.filter(u => u.Department_id === departmentId));
     return this.call('GetTs_usersObjectsFordepartment_id', {
@@ -117,6 +188,139 @@ export class SoapService {
       const rows = this.parseTuples(resp, 'ts_users');
       return rows.length > 0 ? rows[0] : null;
     });
+  }
+
+  insertUser(data: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    password_hash: string;
+    role: string;
+    status: string;
+    department_id: string;
+    created_by: string;
+    temp1?: string;
+    temp2?: string;
+    temp3?: string;
+    temp4?: string;
+    temp5?: string;
+  }): Promise<any> {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    if (this.useMockData) return Promise.resolve({ success: true });
+    return this.call('UpdateTs_users', {
+      tuple: {
+        'new': {
+          ts_users: {
+            '@qAccess': '0',
+            '@qConstraint': '0',
+            '@qInit': '0',
+            '@qValues': '',
+            first_name: data.first_name,
+            last_name: data.last_name,
+            email: data.email,
+            password_hash: data.password_hash,
+            role: data.role,
+            status: data.status,
+            department_id: data.department_id,
+            created_at: now,
+            created_by: data.created_by,
+            updated_at: now,
+            updated_by: data.created_by,
+            temp1: data.temp1 || '',
+            temp2: data.temp2 || '',
+            temp3: data.temp3 || '',
+            temp4: data.temp4 || '',
+            temp5: data.temp5 || ''
+          }
+        }
+      }
+    }, undefined,);
+  }
+
+  deleteUser(userData: any): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    return this.call('UpdateTs_users', {
+      tuple: {
+        'old': {
+          ts_users: {
+            user_id: userData.User_id || userData.user_id || userData.id
+          }
+        }
+      }
+    }, undefined);
+  }
+
+  updateUserStatus(userData: any, newStatus: string): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+
+    // We need to send the mandatory fields in both old and new for a database update
+    const userId = userData.User_id || userData.user_id || userData.id;
+
+    return this.call('UpdateTs_users', {
+      tuple: {
+        'old': {
+          ts_users: {
+            user_id: userId
+          }
+        },
+        'new': {
+          ts_users: {
+            user_id: userId,
+            status: newStatus,
+            updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+            updated_by: 'admin'
+          }
+        }
+      }
+    }, undefined);
+  }
+
+  /**
+   * Create a user in the Cordys Organization.
+   * Uses the UserManagement namespace.
+   */
+  createUserInOrganization(data: {
+    userName: string;
+    description: string;
+    password: string;
+    role: string;
+  }): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    return this.call('CreateUserInOrganization', {
+      User: {
+        UserName: { '@isAnonymous': '', 'text': data.userName },
+        Description: data.description,
+        Credentials: {
+          '@allowDuplicate': 'true',
+          UserIDPassword: {
+            UserID: data.userName,
+            Password: data.password
+          }
+        },
+        Roles: {
+          Role: { '@application': '', 'text': data.role }
+        }
+      }
+    }, 'http://schemas.cordys.com/UserManagement/1.0/Organization');
+  }
+
+  /**
+   * Assign a Cordys role to a user.
+   * Uses the UserManagement namespace, not the DB metadata namespace.
+   */
+  assignRoleToUser(userName: string, roleName: string): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    return this.call('AssignRolesToUser', {
+      User: {
+        UserName: userName,
+        Roles: {
+          Role: {
+            '@application': '',
+            'text': roleName
+          }
+        }
+      }
+    }, 'http://schemas.cordys.com/UserManagement/1.0/Organization');
   }
 
   // ═══════════════════════════════════════════════════════

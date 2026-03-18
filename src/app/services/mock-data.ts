@@ -59,9 +59,9 @@ export const MOCK_JOB_REQUISITIONS = [
 ];
 
 export const MOCK_USERS = [
-  { User_id: 'U01', First_name: 'Alice', Last_name: 'Engineer', Department_id: 'D01', Email: 'alice@example.com' },
-  { User_id: 'U02', First_name: 'Bob', Last_name: 'HR', Department_id: 'D02', Email: 'bob@example.com' },
-  { User_id: 'U03', First_name: 'Charlie', Last_name: 'Market', Department_id: 'D03', Email: 'charlie@example.com' }
+  { User_id: 'U01', First_name: 'Alice', Last_name: 'Engineer', Department_id: 'D01', Email: 'alice@example.com', Role: 'MANAGER' },
+  { User_id: 'U02', First_name: 'Bob', Last_name: 'HR', Department_id: 'D02', Email: 'bob@example.com', Role: 'MANAGER' },
+  { User_id: 'U03', First_name: 'Charlie', Last_name: 'Market', Department_id: 'D03', Email: 'charlie@example.com', Role: 'MANAGER' }
 ];
 
 export const MOCK_APPROVALS = [
