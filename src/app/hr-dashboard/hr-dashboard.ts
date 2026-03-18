@@ -6,6 +6,7 @@ import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './hr-dashboard.html',
-  styleUrls: ['./hr-dashboard.scss'],
+  styleUrls: ['./hr-dashboard.scss']
 })
-export class HrDashboard {}
+export class HrDashboard {
+}

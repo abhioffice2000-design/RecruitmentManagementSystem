@@ -1,4 +1,5 @@
 import { Injectable, NgZone } from '@angular/core';
+import { HeroService } from '../hero.service';
 import { MOCK_DEPARTMENTS, MOCK_SKILLS, MOCK_USERS, MOCK_JOB_REQUISITIONS, MOCK_APPROVALS, MOCK_JOB_SKILLS, MOCK_PIPELINE_STAGES, MOCK_CANDIDATES, MOCK_CANDIDATE_SKILLS,  MOCK_APPLICATIONS,
   MOCK_OFFERS,
   MOCK_DELEGATES
@@ -13,11 +14,11 @@ declare var $: any;
 @Injectable({ providedIn: 'root' })
 export class SoapService {
 
-  public useMockData = true;
+  public useMockData = false;
 
   private readonly NS = 'http://schemas.cordys.com/RMST1DatabaseMetadata';
 
-  constructor(private ngZone: NgZone) {}
+  constructor(private ngZone: NgZone, private hero: HeroService) {}
 
   // ═══════════════════════════════════════════════════════
   //  GENERIC HELPERS
@@ -30,60 +31,38 @@ export class SoapService {
    * @param ns      Namespace (defaults to RMST1DatabaseMetadata)
    */
   call(method: string, params: any, ns?: string): Promise<any> {
-    return new Promise((resolve, reject) => {
-      if (typeof $ === 'undefined' || typeof $.cordys === 'undefined') {
-        reject(new Error('Cordys SDK not loaded'));
-        return;
-      }
-      $.cordys.ajax({
-        method,
-        namespace: ns || this.NS,
-        parameters: params,
-        dataType: 'xml'
-      })
-      .done((xml: any) => {
-        this.ngZone.run(() => resolve(xml));
-      })
-      .fail((err: any) => {
-        this.ngZone.run(() => reject(err));
-      });
-    });
+    return this.hero.ajax(method, ns || this.NS, params);
   }
 
   /**
-   * Parse all <tuple> elements from a SOAP XML response into an array of
-   * plain objects, keyed by child element tag names.
+   * Extract tuples from a Cordys JSON response (dataType: '* json').
+   * The response shape is: { tuple: [ { old: { <entity>: { ...fields } } }, ... ] }
+   * or a single tuple object if only one row.
    */
-  parseTuples(xml: any): Record<string, string>[] {
-    const rows = xml.getElementsByTagName('tuple');
-    const results: Record<string, string>[] = [];
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const obj: Record<string, string> = {};
-      // The actual data is inside <old> or the direct children
-      const dataNode = row.getElementsByTagName('old')[0] || row;
-      const children = dataNode.children || dataNode.childNodes;
-      for (let j = 0; j < children.length; j++) {
-        const child = children[j];
-        if (child.nodeType === 1) { // ELEMENT_NODE
-          // Go one level deeper for the actual table row element
-          if (child.children && child.children.length > 0) {
-            for (let k = 0; k < child.children.length; k++) {
-              const field = child.children[k];
-              if (field.nodeType === 1) {
-                obj[field.tagName] = field.textContent || '';
-              }
-            }
-          } else {
-            obj[child.tagName] = child.textContent || '';
+  parseTuples(resp: any, entityName?: string): Record<string, string>[] {
+    try {
+      const tuples = $.cordys.json.find(resp, 'tuple');
+      if (!tuples) return [];
+      const tupleArr = Array.isArray(tuples) ? tuples : [tuples];
+      return tupleArr.map((t: any) => {
+        const old = t.old || t;
+        // If entityName is provided, pick that sub-object; otherwise flatten
+        if (entityName && old[entityName]) {
+          return old[entityName];
+        }
+        // Try to find the first child object (the entity)
+        const keys = Object.keys(old);
+        for (const key of keys) {
+          if (typeof old[key] === 'object' && old[key] !== null) {
+            return old[key];
           }
         }
-      }
-      if (Object.keys(obj).length > 0) {
-        results.push(obj);
-      }
+        return old;
+      });
+    } catch (e) {
+      console.warn('[SoapService] parseTuples error:', e);
+      return [];
     }
-    return results;
   }
 
   private delay(ms: number): Promise<void> {
@@ -97,8 +76,8 @@ export class SoapService {
   getDepartments(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_DEPARTMENTS);
     return this.call('GetMt_departmentsObjects', {
-      fromDepartment_id: '', toDepartment_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromDepartment_id: '0', toDepartment_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'mt_departments'));
   }
 
   // ═══════════════════════════════════════════════════════
@@ -108,8 +87,8 @@ export class SoapService {
   getSkills(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_SKILLS);
     return this.call('GetMt_skillsObjects', {
-      fromSkill_id: '', toSkill_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromSkill_id: '0', toSkill_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'mt_skills'));
   }
 
   // ═══════════════════════════════════════════════════════
@@ -119,23 +98,23 @@ export class SoapService {
   getUsers(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_USERS);
     return this.call('GetTs_usersObjects', {
-      fromUser_id: '', toUser_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromUser_id: '0', toUser_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'ts_users'));
   }
 
   getUsersByDepartment(departmentId: string): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_USERS.filter(u => u.Department_id === departmentId));
     return this.call('GetTs_usersObjectsFordepartment_id', {
       Department_id: departmentId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_users'));
   }
 
   getUserById(userId: string): Promise<Record<string, string> | null> {
     if (this.useMockData) return Promise.resolve(MOCK_USERS.find((u: any) => u.User_id === userId) || null);
     return this.call('GetTs_usersObject', {
       User_id: userId
-    }).then(xml => {
-      const rows = this.parseTuples(xml);
+    }).then(resp => {
+      const rows = this.parseTuples(resp, 'ts_users');
       return rows.length > 0 ? rows[0] : null;
     });
   }
@@ -147,23 +126,23 @@ export class SoapService {
   getJobRequisitions(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_JOB_REQUISITIONS);
     return this.call('GetTs_job_requisitionsObjects', {
-      fromRequisition_id: '', toRequisition_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromRequisition_id: '0', toRequisition_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'ts_job_requisitions'));
   }
 
   getJobRequisitionsByCreator(userId: string): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_JOB_REQUISITIONS.filter((j: any) => j.created_by_user === userId));
     return this.call('GetTs_job_requisitionsObjectsForcreated_by_user', {
       Created_by_user: userId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_job_requisitions'));
   }
 
   getJobRequisitionById(requisitionId: string): Promise<Record<string, string> | null> {
     if (this.useMockData) return Promise.resolve(MOCK_JOB_REQUISITIONS.find((j: any) => j.requisition_id === requisitionId) || null);
     return this.call('GetTs_job_requisitionsObject', {
       Requisition_id: requisitionId
-    }).then(xml => {
-      const rows = this.parseTuples(xml);
+    }).then(resp => {
+      const rows = this.parseTuples(resp, 'ts_job_requisitions');
       return rows.length > 0 ? rows[0] : null;
     });
   }
@@ -186,7 +165,6 @@ export class SoapService {
       tuple: {
         'new': {
           ts_job_requisitions: {
-            requisition_id: '',
             title: data.title,
             department_id: data.department_id,
             description: data.description,
@@ -282,7 +260,7 @@ export class SoapService {
     if (this.useMockData) return Promise.resolve(MOCK_JOB_SKILLS.filter((s: any) => s.requisition_id === requisitionId));
     return this.call('GetTs_job_skillsObjectsForrequisition_id', {
       Requisition_id: requisitionId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_job_skills'));
   }
 
   // ═══════════════════════════════════════════════════════
@@ -292,15 +270,15 @@ export class SoapService {
   getApprovals(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_APPROVALS);
     return this.call('GetTs_approvalsObjects', {
-      fromApproval_id: '', toApproval_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromApproval_id: '0', toApproval_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'ts_approvals'));
   }
 
   getApprovalsByRequester(userId: string): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_APPROVALS.filter((a: any) => a.requested_by === userId));
     return this.call('GetTs_approvalsObjectsForrequested_by', {
       Requested_by: userId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_approvals'));
   }
 
   insertApproval(data: {
@@ -314,7 +292,6 @@ export class SoapService {
       tuple: {
         'new': {
           ts_approvals: {
-            approval_id: '',
             entity_type: data.entity_type,
             entity_id: data.entity_id,
             status: 'PENDING',
@@ -381,8 +358,8 @@ export class SoapService {
   getPipelineStages(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_PIPELINE_STAGES);
     return this.call('GetMt_pipeline_stagesObjects', {
-      fromStage_id: '', toStage_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromStage_id: '0', toStage_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'mt_pipeline_stages'));
   }
 
   // ═══════════════════════════════════════════════════════
@@ -392,16 +369,16 @@ export class SoapService {
   getCandidates(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_CANDIDATES);
     return this.call('GetTs_candidatesObjects', {
-      fromCandidate_id: '', toCandidate_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromCandidate_id: '0', toCandidate_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'ts_candidates'));
   }
 
   getCandidateById(candidateId: string): Promise<Record<string, string> | null> {
     if (this.useMockData) return Promise.resolve(MOCK_CANDIDATES.find((c: any) => c.candidate_id === candidateId) || null);
     return this.call('GetTs_candidatesObject', {
       Candidate_id: candidateId
-    }).then(xml => {
-      const rows = this.parseTuples(xml);
+    }).then(resp => {
+      const rows = this.parseTuples(resp, 'ts_candidates');
       return rows.length > 0 ? rows[0] : null;
     });
   }
@@ -410,7 +387,7 @@ export class SoapService {
     if (this.useMockData) return Promise.resolve(MOCK_CANDIDATES.filter((c: any) => c.email === email));
     return this.call('GetTs_candidatesObjectsforemail', {
       Email: email
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_candidates'));
   }
 
   insertCandidate(data: {
@@ -427,7 +404,6 @@ export class SoapService {
       tuple: {
         'new': {
           ts_candidates: {
-            candidate_id: '',
             first_name: data.first_name,
             last_name: data.last_name,
             email: data.email,
@@ -466,7 +442,7 @@ export class SoapService {
     if (this.useMockData) return Promise.resolve(MOCK_CANDIDATE_SKILLS.filter((s: any) => s.candidate_id === candidateId));
     return this.call('GetTs_candidate_skillsObjectsForcandidate_id', {
       Candidate_id: candidateId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_candidate_skills'));
   }
 
   // ═══════════════════════════════════════════════════════
@@ -476,22 +452,22 @@ export class SoapService {
   getApplications(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_APPLICATIONS);
     return this.call('GetTs_applicationsObjects', {
-      fromApplication_id: '', toApplication_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromApplication_id: '0', toApplication_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'ts_applications'));
   }
 
   getApplicationsByRequisition(requisitionId: string): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_APPLICATIONS.filter((a: any) => a.requisition_id === requisitionId));
     return this.call('GetTs_applicationsObjectsForrequisition_id', {
       Requisition_id: requisitionId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_applications'));
   }
 
   getApplicationsByCandidate(candidateId: string): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_APPLICATIONS.filter((a: any) => a.candidate_id === candidateId));
     return this.call('GetTs_applicationsObjectsForcandidate_id', {
       Candidate_id: candidateId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_applications'));
   }
 
   insertApplication(data: {
@@ -506,7 +482,6 @@ export class SoapService {
       tuple: {
         'new': {
           ts_applications: {
-            application_id: '',
             candidate_id: data.candidate_id,
             requisition_id: data.requisition_id,
             source: data.source,
@@ -626,7 +601,6 @@ export class SoapService {
       tuple: {
         'new': {
           hs_application_stage_history: {
-            history_id: '',
             application_id: data.application_id,
             from_stage_id: data.from_stage_id,
             to_stage_id: data.to_stage_id,
@@ -644,7 +618,7 @@ export class SoapService {
     if (this.useMockData) return Promise.resolve([]);
     return this.call('GetHs_application_stage_historyObjectsForapplication_id', {
       Application_id: applicationId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'hs_application_stage_history'));
   }
 
   // ═══════════════════════════════════════════════════════
@@ -654,15 +628,15 @@ export class SoapService {
   getOffers(): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_OFFERS);
     return this.call('GetTs_offersObjects', {
-      fromOffer_id: '', toOffer_id: ''
-    }).then(xml => this.parseTuples(xml));
+      fromOffer_id: '0', toOffer_id: 'zzzzzzzzzz'
+    }).then(resp => this.parseTuples(resp, 'ts_offers'));
   }
 
   getOffersByApplication(applicationId: string): Promise<Record<string, string>[]> {
     if (this.useMockData) return Promise.resolve(MOCK_OFFERS.filter(o => o['application_id'] === applicationId));
     return this.call('GetTs_offersObjectsForapplication_id', {
       Application_id: applicationId
-    }).then(xml => this.parseTuples(xml));
+    }).then(resp => this.parseTuples(resp, 'ts_offers'));
   }
 
   async insertOffer(applicationId: string, offerDetails: any): Promise<any> {
@@ -687,7 +661,6 @@ export class SoapService {
       tuple: {
         'new': {
           ts_offers: {
-            offer_id: '',
             application_id: applicationId,
             offered_salary: offerDetails.offered_salary || offerDetails.salary || '',
             salary_currency: offerDetails.salary_currency || offerDetails.currency || 'LPA',

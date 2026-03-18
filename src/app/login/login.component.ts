@@ -204,6 +204,9 @@ export class LoginComponent implements OnInit {
   redirectUser(roles: string[], username: string) {
     sessionStorage.setItem('loggedInUser', username);
 
+    // Fetch the user_id from ts_users table by email so all pages can reference it
+    this.fetchAndStoreUserId(username);
+
     const roleRouteMap: { role: string; route: string; label: string }[] = [
       { role: 'ADMIN_RMST1', route: '/admin', label: 'Admin Dashboard' },
       { role: 'CANDIDATE_RMST1', route: '/candidate', label: 'Candidate Portal' },
@@ -233,5 +236,92 @@ export class LoginComponent implements OnInit {
     // No recognized role
     this.isLoading = false;
     this.showToast('Unauthorized user — no valid role assigned.', 'error');
+  }
+
+  // ─── Fetch user details by email ────────────────
+  private fetchAndStoreUserId(email: string) {
+    const self = this;
+    $.cordys.ajax({
+      method: 'Getuserdetailsbymail',
+      namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      dataType: '* json',
+      parameters: { emailid: email }
+    })
+    .done(function (resp: any) {
+      try {
+        const tuples = $.cordys.json.find(resp, 'tuple');
+        if (tuples) {
+          const tuple = Array.isArray(tuples) ? tuples[0] : tuples;
+          const account = tuple?.old?.ts_accounts || tuple?.ts_accounts || tuple?.old || tuple;
+          
+          const userIdStr = account?.user_id;
+          // check if null object from Cordys XML-to-JSON
+          const userId = (userIdStr && typeof userIdStr === 'object' && userIdStr['@null'] === 'true') ? '' : (userIdStr || '');
+
+          const candidateIdStr = account?.candidate_id;
+          const candidateId = (candidateIdStr && typeof candidateIdStr === 'object' && candidateIdStr['@null'] === 'true') ? '' : (candidateIdStr || '');
+          
+          let validUserId = '';
+          if (userId) {
+            validUserId = typeof userId === 'string' ? userId : userId.text || '';
+            sessionStorage.setItem('loggedInUserId', validUserId);
+            console.log('[Login] Stored loggedInUserId:', sessionStorage.getItem('loggedInUserId'));
+            
+            // Fetch department_id from ts_users since it's a valid employee user
+            self.fetchAndStoreDepartmentId(validUserId);
+          } else {
+            console.warn('[Login] user_id is null/empty for this account.');
+          }
+
+          if (candidateId) {
+            sessionStorage.setItem('loggedInCandidateId', typeof candidateId === 'string' ? candidateId : candidateId.text || '');
+            console.log('[Login] Stored loggedInCandidateId:', sessionStorage.getItem('loggedInCandidateId'));
+          }
+          
+          // Store raw email as well, just in case
+          sessionStorage.setItem('loggedInUserEmail', email);
+
+        } else {
+          console.warn('[Login] No tuples found for email:', email);
+        }
+      } catch (e) {
+        console.warn('[Login] Error parsing user lookup response:', e);
+      }
+    })
+    .fail(function () {
+      console.warn('[Login] Failed to fetch user details by email');
+    });
+  }
+
+  // ─── Fetch department_id from ts_users ────────────────
+  private fetchAndStoreDepartmentId(userId: string) {
+    $.cordys.ajax({
+      method: 'GetTs_usersObject',
+      namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      dataType: '* json',
+      parameters: { User_id: userId }
+    })
+    .done(function (resp: any) {
+      try {
+        const tuples = $.cordys.json.find(resp, 'tuple');
+        if (tuples) {
+          const tuple = Array.isArray(tuples) ? tuples[0] : tuples;
+          const user = tuple?.old?.ts_users || tuple?.ts_users || tuple?.old || tuple;
+          const deptId = user?.department_id || '';
+          if (deptId) {
+            const finalDeptId = typeof deptId === 'string' ? deptId : deptId.text || '';
+            if (finalDeptId && (!finalDeptId['@null'])) {
+               sessionStorage.setItem('loggedInUserDepartmentId', finalDeptId);
+               console.log('[Login] Stored loggedInUserDepartmentId:', finalDeptId);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Login] Error parsing ts_users to get department:', e);
+      }
+    })
+    .fail(function (e: any) {
+      console.warn('[Login] Failed to fetch user department details', e);
+    });
   }
 }

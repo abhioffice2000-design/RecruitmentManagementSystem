@@ -3,6 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SoapService } from '../../services/soap.service';
 
+declare var $: any;
+
 // ===== Interfaces =====
 interface Department {
   department_id: string;
@@ -305,8 +307,17 @@ export class JobsTab implements OnInit {
         created_by_user: this.loggedInUserId,
       });
 
-      // Extract the generated requisition_id from the response
-      const reqId = reqResponse.getElementsByTagName('requisition_id')[0]?.textContent || '';
+      // Extract the generated requisition_id from the JSON response
+      let reqId = '';
+      try {
+        const nodes = $.cordys.json.find(reqResponse, 'requisition_id');
+        if (nodes) {
+          const node = Array.isArray(nodes) ? nodes[0] : nodes;
+          reqId = typeof node === 'string' ? node : (node.text || '');
+        }
+      } catch (e) {
+        console.warn('Error extracting requisition_id:', e);
+      }
 
       if (!reqId) {
         throw new Error('Requisition was created but could not extract the ID from response.');
