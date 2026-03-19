@@ -82,6 +82,19 @@ export class SoapService {
     }).then(resp => this.parseTuples(resp, 'mt_departments'));
   }
 
+  getDepartmentById(departmentId: string): Promise<Record<string, string> | null> {
+    if (this.useMockData) return Promise.resolve(MOCK_DEPARTMENTS.find(d => d.department_id === departmentId) || null);
+    return this.call('GetMt_departmentsObject', {
+      preserveSpace: 'no',
+      qAccess: '0',
+      qValues: '',
+      Department_id: departmentId
+    }).then(resp => {
+      const rows = this.parseTuples(resp, 'mt_departments');
+      return rows.length > 0 ? rows[0] : null;
+    });
+  }
+
   /**
    * Fetch all departments from the database.
    * Uses the GetAllDepartments SOAP method.
@@ -537,7 +550,7 @@ export class SoapService {
     });
   }
 
-  insertJobRequisition(data: {
+  async insertJobRequisition(data: {
     title: string;
     department_id: string;
     description: string;
@@ -551,7 +564,9 @@ export class SoapService {
     created_by_user: string;
   }): Promise<any> {
     if (this.useMockData) return Promise.resolve({ success: true });
-    return this.call('UpdateTs_job_requisitions', {
+
+    // Use this.call() for insert — proven to create records successfully
+    const resp = await this.call('UpdateTs_job_requisitions', {
       tuple: {
         'new': {
           ts_job_requisitions: {
@@ -572,6 +587,35 @@ export class SoapService {
         }
       }
     });
+
+    // After insert, query the DB to find the generated requisition_id
+    // DB trigger auto-generates the ID, but this.call() doesn't return it
+    let reqId = '';
+    try {
+      const allReqs = await this.getJobRequisitions();
+      // Find the most recently created matching record
+      const matches = allReqs
+        .filter(r =>
+          r['title'] === data.title &&
+          r['department_id'] === data.department_id &&
+          r['created_by_user'] === data.created_by_user
+        )
+        .sort((a, b) => {
+          // Sort by created_at descending to get the latest
+          const dateA = a['created_at'] || '';
+          const dateB = b['created_at'] || '';
+          return dateB.localeCompare(dateA);
+        });
+      if (matches.length > 0) {
+        reqId = matches[0]['requisition_id'] || '';
+      }
+    } catch (e) {
+      console.warn('[SOAP] Failed to query for new requisition ID:', e);
+    }
+
+    console.log('[SOAP] Job requisition created, extracted ID:', reqId);
+    resp._generatedReqId = reqId;
+    return resp;
   }
 
   updateJobRequisitionStatus(oldData: Record<string, string>, newStatus: string): Promise<any> {
@@ -686,10 +730,8 @@ export class SoapService {
             entity_id: data.entity_id,
             status: 'PENDING',
             requested_by: data.requested_by,
-            approved_by: '',
             comments: data.comments,
             requested_at: new Date().toISOString(),
-            approved_at: '',
             temp1: '', temp2: '', temp3: '', temp4: '', temp5: ''
           }
         }
@@ -1288,31 +1330,351 @@ export class SoapService {
   }
 
   // ═══════════════════════════════════════════════════
-  //  DELEGATES
+  //  DELEGATES  (real SOAP — ts_delegations table)
   // ═══════════════════════════════════════════════════
+
   async getDelegates(managerId: string): Promise<string[]> {
-    if (!this.useMockData) {
-      // Cordys implementation here if needed
-      return [];
+    if (this.useMockData) {
+      await this.delay(300);
+      const existing = MOCK_DELEGATES.find(d => d.manager_id === managerId);
+      return existing ? [...existing.delegate_ids] : [];
     }
-    await this.delay(300);
-    const existing = MOCK_DELEGATES.find(d => d.manager_id === managerId);
-    return existing ? [...existing.delegate_ids] : [];
+    const resp = await this.call('GetTs_delegationsObjectsFordelegator_user_id', {
+      Delegator_user_id: managerId
+    });
+    const rows = this.parseTuples(resp, 'ts_delegations');
+    return rows
+      .filter(r => (r['status'] || 'ACTIVE') === 'ACTIVE')
+      .map(r => r['delegate_user_id'] || '');
+  }
+
+  async getDelegationRecords(managerId: string): Promise<Record<string, string>[]> {
+    if (this.useMockData) return [];
+    const resp = await this.call('GetTs_delegationsObjectsFordelegator_user_id', {
+      Delegator_user_id: managerId
+    });
+    return this.parseTuples(resp, 'ts_delegations');
+  }
+
+  insertDelegation(data: {
+    delegator_user_id: string;
+    delegate_user_id: string;
+    start_date: string;
+    end_date: string;
+    reason: string;
+  }): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    return this.call('UpdateTs_delegations', {
+      tuple: {
+        'new': {
+          ts_delegations: {
+            '@qAccess': '0',
+            '@qConstraint': '0',
+            '@qInit': '0',
+            '@qValues': '',
+            delegator_user_id: data.delegator_user_id,
+            delegate_user_id: data.delegate_user_id,
+            start_date: data.start_date,
+            end_date: data.end_date,
+            status: 'ACTIVE',
+            reason: data.reason || '',
+            created_at: new Date().toISOString(),
+            created_by: data.delegator_user_id,
+            updated_at: new Date().toISOString(),
+            updated_by: data.delegator_user_id,
+            temp1: '', temp2: '', temp3: '', temp4: '', temp5: ''
+          }
+        }
+      }
+    });
+  }
+
+  deleteDelegation(oldData: Record<string, string>): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    return this.call('UpdateTs_delegations', {
+      tuple: {
+        old: {
+          ts_delegations: {
+            delegation_id: oldData['delegation_id'],
+            delegator_user_id: oldData['delegator_user_id'] || '',
+            delegate_user_id: oldData['delegate_user_id'] || '',
+            start_date: oldData['start_date'] || '',
+            end_date: oldData['end_date'] || '',
+            status: oldData['status'] || '',
+            reason: oldData['reason'] || '',
+            created_at: oldData['created_at'] || '',
+            created_by: oldData['created_by'] || '',
+            updated_at: oldData['updated_at'] || '',
+            updated_by: oldData['updated_by'] || '',
+            temp1: oldData['temp1'] || '',
+            temp2: oldData['temp2'] || '',
+            temp3: oldData['temp3'] || '',
+            temp4: oldData['temp4'] || '',
+            temp5: oldData['temp5'] || ''
+          }
+        },
+        'new': {
+          ts_delegations: {
+            delegation_id: oldData['delegation_id'],
+            delegator_user_id: oldData['delegator_user_id'] || '',
+            delegate_user_id: oldData['delegate_user_id'] || '',
+            start_date: oldData['start_date'] || '',
+            end_date: oldData['end_date'] || '',
+            status: 'INACTIVE',
+            reason: oldData['reason'] || '',
+            created_at: oldData['created_at'] || '',
+            created_by: oldData['created_by'] || '',
+            updated_at: oldData['updated_at'] || '',
+            updated_by: oldData['updated_by'] || '',
+            temp1: oldData['temp1'] || '',
+            temp2: oldData['temp2'] || '',
+            temp3: oldData['temp3'] || '',
+            temp4: oldData['temp4'] || '',
+            temp5: oldData['temp5'] || ''
+          }
+        }
+      }
+    });
   }
 
   async updateDelegates(managerId: string, delegateIds: string[]): Promise<any> {
-    if (!this.useMockData) {
-      // Cordys implementation here
+    if (this.useMockData) {
+      await this.delay(500);
+      const existingPos = MOCK_DELEGATES.findIndex(d => d.manager_id === managerId);
+      if (existingPos >= 0) {
+        MOCK_DELEGATES[existingPos].delegate_ids = [...delegateIds];
+      } else {
+        MOCK_DELEGATES.push({ manager_id: managerId, delegate_ids: [...delegateIds] });
+      }
       return { success: true };
     }
-    await this.delay(500);
-    const existingPos = MOCK_DELEGATES.findIndex(d => d.manager_id === managerId);
-    if (existingPos >= 0) {
-      MOCK_DELEGATES[existingPos].delegate_ids = [...delegateIds];
-    } else {
-      MOCK_DELEGATES.push({ manager_id: managerId, delegate_ids: [...delegateIds] });
+
+    // Real SOAP: get existing delegation records, diff, insert/delete
+    const existing = await this.getDelegationRecords(managerId);
+    const existingMap = new Map<string, Record<string, string>>();
+    existing.forEach(r => existingMap.set(r['delegate_user_id'] || '', r));
+
+    const newSet = new Set(delegateIds);
+    const existingIds = new Set(existingMap.keys());
+
+    // Insert new delegations
+    const today = new Date().toISOString().split('T')[0];
+    const endDate = new Date(Date.now() + 365 * 86400000).toISOString().split('T')[0];
+    for (const id of delegateIds) {
+      if (!existingIds.has(id)) {
+        await this.insertDelegation({
+          delegator_user_id: managerId,
+          delegate_user_id: id,
+          start_date: today,
+          end_date: endDate,
+          reason: 'Delegated via Delegates page'
+        });
+      }
     }
-    return Promise.resolve({ success: true });
+
+    // Deactivate removed delegations
+    for (const [id, record] of existingMap) {
+      if (!newSet.has(id) && (record['status'] || 'ACTIVE') === 'ACTIVE') {
+        await this.deleteDelegation(record);
+      }
+    }
+
+    return { success: true };
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  BPM WORKFLOW
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Build the Cordys distinguished name from an email address.
+   */
+  _makeDN(email: string): string {
+    return `cn=${email},cn=organizational users,o=training2025,cn=cordys,cn=defaultInst,o=adnateitsolutions.com`;
+  }
+
+  /**
+   * Trigger the BPM process for a job requisition.
+   * Calls RequisitionTaskIDGenerationBPM in the default namespace.
+   */
+  triggerRequisitionBPM(managerEmail: string, requisitionId: string): Promise<any> {
+    const dn = this._makeDN(managerEmail);
+    return this.call('RequisitionTaskIDGenerationBPM', {
+      dn: dn,
+      requisition_id: requisitionId
+    }, 'http://schemas.cordys.com/default');
+  }
+
+  /**
+   * Complete or act on a Cordys BPM task.
+   */
+  performTaskAction(taskId: string, action: string, data?: any): Promise<any> {
+    const params: any = {
+      TaskId: taskId,
+      Action: action
+    };
+    if (data) params.Data = data;
+    return this.call('PerformTaskAction', params,
+      'http://schemas.cordys.com/notification/workflow/1.0');
+  }
+
+  /**
+   * Delegate a BPM task to another user.
+   */
+  delegateBPMTask(taskId: string, userDN: string, memo: string, dueDate: string): Promise<any> {
+    return this.call('DelegateTask', {
+      TaskId: taskId,
+      TransferOwnership: 'true',
+      Memo: memo,
+      SendTo: { UserDN: userDN },
+      DueDate: dueDate
+    }, 'http://schemas.cordys.com/notification/workflow/1.0');
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  JOB REQUISITION TEMP UPDATE
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Update specific temp columns and optionally status on a job requisition.
+   */
+  updateJobRequisitionTemp(
+    oldData: Record<string, string>,
+    updates: { temp1?: string; temp2?: string; temp3?: string; status?: string }
+  ): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    const buildRow = (overrides: Record<string, string> = {}) => ({
+      requisition_id: oldData['requisition_id'],
+      title: oldData['title'] || '',
+      department_id: oldData['department_id'] || '',
+      description: oldData['description'] || '',
+      experience_min: oldData['experience_min'] || '',
+      experience_max: oldData['experience_max'] || '',
+      salary_min: oldData['salary_min'] || '',
+      salary_max: oldData['salary_max'] || '',
+      salary_currency: oldData['salary_currency'] || '',
+      open_positions: oldData['open_positions'] || '',
+      status: overrides['status'] || oldData['status'] || '',
+      posting_source: oldData['posting_source'] || '',
+      created_by_user: oldData['created_by_user'] || '',
+      created_at: oldData['created_at'] || '',
+      created_by: oldData['created_by'] || '',
+      updated_at: oldData['updated_at'] || '',
+      updated_by: oldData['updated_by'] || '',
+      temp1: overrides['temp1'] !== undefined ? overrides['temp1'] : (oldData['temp1'] || ''),
+      temp2: overrides['temp2'] !== undefined ? overrides['temp2'] : (oldData['temp2'] || ''),
+      temp3: overrides['temp3'] !== undefined ? overrides['temp3'] : (oldData['temp3'] || ''),
+      temp4: oldData['temp4'] || '',
+      temp5: oldData['temp5'] || ''
+    });
+    return this.call('UpdateTs_job_requisitions', {
+      tuple: {
+        old: { ts_job_requisitions: buildRow() },
+        'new': { ts_job_requisitions: buildRow(updates as any) }
+      }
+    });
+  }
+
+  /**
+   * Full update of a job requisition row (for edit & resubmit).
+   */
+  updateJobRequisition(
+    oldData: Record<string, string>,
+    newData: Record<string, string>
+  ): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    const buildRow = (d: Record<string, string>) => ({
+      requisition_id: d['requisition_id'] || oldData['requisition_id'],
+      title: d['title'] || '',
+      department_id: d['department_id'] || '',
+      description: d['description'] || '',
+      experience_min: d['experience_min'] || '',
+      experience_max: d['experience_max'] || '',
+      salary_min: d['salary_min'] || '',
+      salary_max: d['salary_max'] || '',
+      salary_currency: d['salary_currency'] || '',
+      open_positions: d['open_positions'] || '',
+      status: d['status'] || '',
+      posting_source: d['posting_source'] || '',
+      created_by_user: d['created_by_user'] || '',
+      created_at: d['created_at'] || '',
+      created_by: d['created_by'] || '',
+      updated_at: d['updated_at'] || '',
+      updated_by: d['updated_by'] || '',
+      temp1: d['temp1'] || '',
+      temp2: d['temp2'] || '',
+      temp3: d['temp3'] || '',
+      temp4: d['temp4'] || '',
+      temp5: d['temp5'] || ''
+    });
+    return this.call('UpdateTs_job_requisitions', {
+      tuple: {
+        old: { ts_job_requisitions: buildRow(oldData) },
+        'new': { ts_job_requisitions: buildRow(newData) }
+      }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  APPROVAL HISTORY  (uses ts_approvals table)
+  // ═══════════════════════════════════════════════════
+
+  /**
+   * Insert an approval history record into ts_approvals.
+   * action: SUBMITTED | APPROVED | REJECTED | DELEGATED | RESUBMITTED
+   */
+  insertApprovalHistory(data: {
+    requisition_id: string;
+    action: string;
+    requested_by: string;
+    approved_by?: string;
+    comments: string;
+  }): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+    // approval_status_enum only allows: PENDING, APPROVED, REJECTED
+    // Store the real action type (SUBMITTED, DELEGATED, RESUBMITTED) in temp1/comments
+    let dbStatus = 'PENDING';
+    if (data.action === 'APPROVED') dbStatus = 'APPROVED';
+    else if (data.action === 'REJECTED') dbStatus = 'REJECTED';
+    
+    // Fallback to "system" if no user provided (to avoid FK violation)
+    const reqBy = data.requested_by || 'system';
+
+    const approvalObj: any = {
+      entity_type: 'REQUISITION',
+      entity_id: data.requisition_id,
+      status: dbStatus,
+      requested_by: reqBy,
+      comments: `[${data.action}] ${data.comments}`,
+      requested_at: new Date().toISOString(),
+      temp1: data.action,
+      temp2: '', temp3: '', temp4: '', temp5: ''
+    };
+
+    if (data.approved_by) {
+      approvalObj.approved_by = data.approved_by;
+      approvalObj.approved_at = new Date().toISOString();
+    }
+
+    return this.call('UpdateTs_approvals', {
+      tuple: {
+        'new': {
+          ts_approvals: approvalObj
+        }
+      }
+    });
+  }
+
+  /**
+   * Get all approval history records for a given requisition.
+   */
+  async getApprovalHistoryByRequisition(requisitionId: string): Promise<Record<string, string>[]> {
+    if (this.useMockData) return [];
+    const resp = await this.call('GetTs_approvalsObjects', {
+      fromApproval_id: '0', toApproval_id: 'zzzzzzzzzz'
+    });
+    const allRows = this.parseTuples(resp, 'ts_approvals');
+    return allRows.filter(r => r['entity_id'] === requisitionId && r['entity_type'] === 'REQUISITION');
   }
 }
 

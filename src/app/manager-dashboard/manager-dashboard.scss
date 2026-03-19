@@ -233,7 +233,10 @@
 
 /* Delegate Modal */
 .delegate-desc { font-size: 14px; color: #475569; margin: 0 0 16px; line-height: 1.5; }
-.delegate-user-list { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.delegate-dates {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;
+}
+.delegate-user-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
 .delegate-user-item {
   display: flex; align-items: center; gap: 12px; padding: 10px 14px;
   border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all 0.15s;
@@ -248,10 +251,51 @@
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 13px; flex-shrink: 0;
 }
-.user-name { flex: 1; font-size: 14px; font-weight: 500; color: #1e293b; }
+.user-info-col { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.user-name { font-size: 14px; font-weight: 500; color: #1e293b; }
+.user-role-badge {
+  display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: #7c3aed; background: #f3e8ff;
+  padding: 1px 8px; border-radius: 10px; width: fit-content;
+}
 .select-icon { color: #cbd5e1; font-size: 16px; }
 .selected-count { margin-right: auto; font-size: 12px; color: #7c3aed; font-weight: 600;
   i { margin-right: 4px; }
+}
+.no-managers-msg {
+  text-align: center; padding: 20px; color: #94a3b8; font-size: 13px;
+  i { margin-right: 6px; }
+}
+
+/* ─── Delegations View ──────────────────────────── */
+.tab-delegations.active { background: #7c3aed !important; color: #fff !important; 
+  .tab-count { background: #fff; color: #7c3aed; }
+}
+.delegations-view { display: flex; flex-direction: column; gap: 14px; }
+.delegation-card {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 22px; background: #fff; border-radius: 14px; border: 1px solid #e2e8f0;
+  transition: box-shadow 0.2s;
+  &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+}
+.del-card-left { display: flex; align-items: center; gap: 14px; width: 30%; }
+.del-user-info { display: flex; flex-direction: column; gap: 4px; }
+.del-name { font-size: 15px; font-weight: 600; color: #1e293b; }
+.del-card-middle { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.del-date-wrap {
+  font-size: 13px; font-weight: 500; color: #475569;
+  i { color: #7c3aed; margin-right: 6px; }
+}
+.del-reason {
+  font-size: 13px; color: #64748b; font-style: italic;
+  i { color: #cbd5e1; margin-right: 6px; }
+}
+.del-card-right { display: flex; align-items: center; justify-content: flex-end; width: 15%; }
+.btn-revoke {
+  padding: 8px 16px; border-radius: 8px; border: 1px solid #fecaca; background: #fff;
+  color: #dc2626; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+  i { margin-right: 6px; }
+  &:hover { background: #fee2e2; }
 }
 
 /* ─── Toast ─────────────────────────────────────── */

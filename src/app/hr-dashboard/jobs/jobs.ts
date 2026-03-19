@@ -33,6 +33,10 @@ interface JobRequisition {
   created_by_user: string;
   created_at: string;
   approval_status?: string;
+  temp1?: string;  // Manager email
+  temp2?: string;  // BPM Task ID
+  temp3?: string;  // Rejection reason
+  _raw?: Record<string, string>;  // Raw data for updates
 }
 
 interface SelectedSkill {
@@ -71,12 +75,18 @@ export class JobsTab implements OnInit {
   departments: Department[] = [];
   allSkills: Skill[] = [];
   loggedInUserId = '';
+  loggedInUserEmail = '';
 
   // ─── Form ───────────────────────────────────────
   form: JobForm = this.emptyForm();
   selectedSkills: SelectedSkill[] = [];
   skillToAdd = '';
   skillLevelToAdd = 'Intermediate';
+
+  // ─── Edit / Resubmit ────────────────────────────
+  isEditing = false;
+  editingReqId = '';
+  editingOldData: Record<string, string> = {};
 
   // ─── Validation ─────────────────────────────────
   errors: Record<string, string> = {};
@@ -100,6 +110,7 @@ export class JobsTab implements OnInit {
 
   ngOnInit(): void {
     this.loggedInUserId = sessionStorage.getItem('loggedInUserId') || '';
+    this.loggedInUserEmail = sessionStorage.getItem('loggedInUserEmail') || '';
     this.loadJobs();
     this.loadDepartments();
     this.loadSkills();
@@ -117,23 +128,34 @@ export class JobsTab implements OnInit {
       const deptMap = new Map<string, string>();
       this.departments.forEach(d => deptMap.set(d.department_id, d.department_name));
 
-      this.jobs = rows.map(r => ({
-        requisition_id: r['requisition_id'] || '',
-        title: r['title'] || '',
-        department_id: r['department_id'] || '',
-        department_name: deptMap.get(r['department_id'] || '') || r['department_id'] || '',
-        description: r['description'] || '',
-        experience_min: r['experience_min'] || '',
-        experience_max: r['experience_max'] || '',
-        salary_min: r['salary_min'] || '',
-        salary_max: r['salary_max'] || '',
-        salary_currency: r['salary_currency'] || 'INR',
-        open_positions: r['open_positions'] || '1',
-        status: r['status'] || 'PENDING',
-        posting_source: r['posting_source'] || '',
-        created_by_user: r['created_by_user'] || '',
-        created_at: r['created_at'] || '',
-      }));
+      this.jobs = rows.map(r => {
+        // Detect rejected: status=CLOSED + temp3 has rejection reason
+        let displayStatus = r['status'] || 'PENDING';
+        if (displayStatus === 'CLOSED' && r['temp3']) {
+          displayStatus = 'REJECTED';
+        }
+        return {
+          requisition_id: r['requisition_id'] || '',
+          title: r['title'] || '',
+          department_id: r['department_id'] || '',
+          department_name: deptMap.get(r['department_id'] || '') || r['department_id'] || '',
+          description: r['description'] || '',
+          experience_min: r['experience_min'] || '',
+          experience_max: r['experience_max'] || '',
+          salary_min: r['salary_min'] || '',
+          salary_max: r['salary_max'] || '',
+          salary_currency: r['salary_currency'] || 'INR',
+          open_positions: r['open_positions'] || '1',
+          status: displayStatus,
+          posting_source: r['posting_source'] || '',
+          created_by_user: r['created_by_user'] || '',
+          created_at: r['created_at'] || '',
+          temp1: r['temp1'] || '',
+          temp2: r['temp2'] || '',
+          temp3: r['temp3'] || '',
+          _raw: r,
+        };
+      });
 
       // Re-map department names after departments load
       if (this.departments.length > 0) {
@@ -187,12 +209,51 @@ export class JobsTab implements OnInit {
     this.form = this.emptyForm();
     this.selectedSkills = [];
     this.errors = {};
+    this.isEditing = false;
+    this.editingReqId = '';
+    this.editingOldData = {};
     this.showForm = true;
   }
 
   closeForm(): void {
     this.showForm = false;
+    this.isEditing = false;
+    this.editingReqId = '';
+    this.editingOldData = {};
     this.errors = {};
+  }
+
+  /**
+   * Edit a rejected job requisition — loads data into form in edit mode.
+   */
+  editJob(job: JobRequisition): void {
+    this.form = {
+      title: job.title,
+      department_id: job.department_id,
+      description: job.description,
+      experience_min: job.experience_min,
+      experience_max: job.experience_max,
+      salary_min: job.salary_min,
+      salary_max: job.salary_max,
+      salary_currency: job.salary_currency,
+      open_positions: job.open_positions,
+      posting_source: job.posting_source,
+    };
+    this.isEditing = true;
+    this.editingReqId = job.requisition_id;
+    this.editingOldData = job._raw || {};
+    this.selectedSkills = [];
+    this.errors = {};
+    this.showForm = true;
+
+    // Load existing skills for this job
+    this.soap.getJobSkillsByRequisition(job.requisition_id).then(skills => {
+      this.selectedSkills = skills.map(s => ({
+        skill_id: s['skill_id'] || '',
+        skill_name: this.allSkills.find(sk => sk.skill_id === s['skill_id'])?.skill_name || s['skill_id'],
+        required_level: s['required_level'] || 'Intermediate'
+      }));
+    }).catch(e => console.warn('[Jobs] Failed to load skills for edit:', e));
   }
 
   emptyForm(): JobForm {
@@ -292,6 +353,13 @@ export class JobsTab implements OnInit {
     this.isSubmitting = true;
 
     try {
+      // ─── EDIT / RESUBMIT MODE ───
+      if (this.isEditing && this.editingReqId) {
+        await this.resubmitJob();
+        return;
+      }
+
+      // ─── CREATE NEW MODE ───
       // Step 1: Insert Job Requisition
       const reqResponse = await this.soap.insertJobRequisition({
         title: this.form.title.trim(),
@@ -310,8 +378,13 @@ export class JobsTab implements OnInit {
       // Extract the generated requisition_id — multiple strategies
       let reqId = '';
 
+      // Strategy 0: Use the ID we generated in insertJobRequisition
+      if (reqResponse?._generatedReqId) {
+        reqId = reqResponse._generatedReqId;
+      }
+
       // Strategy 1: $.cordys.json.find
-      try {
+      if (!reqId) try {
         const nodes = $.cordys.json.find(reqResponse, 'requisition_id');
         if (nodes) {
           const node = Array.isArray(nodes) ? nodes[0] : nodes;
@@ -328,7 +401,6 @@ export class JobsTab implements OnInit {
           const jobObj = tuple?.['new']?.ts_job_requisitions || tuple?.old?.ts_job_requisitions || {};
           reqId = jobObj?.requisition_id || '';
           if (!reqId) {
-            // Try stringifying and regex matching
             const respStr = JSON.stringify(reqResponse);
             const match = respStr.match(/"requisition_id"\s*:\s*"([^"]+)"/);
             if (match) reqId = match[1];
@@ -338,10 +410,9 @@ export class JobsTab implements OnInit {
         }
       }
 
-      // Strategy 3: Fallback — query latest requisitions to find the one we just created
+      // Strategy 3: Fallback — query latest requisitions
       if (!reqId) {
         try {
-          console.log('[Jobs] Trying fallback: querying DB for latest requisition...');
           const allReqs = await this.soap.getJobRequisitions();
           const match = allReqs.find(r =>
             r['title'] === this.form.title.trim() &&
@@ -354,7 +425,7 @@ export class JobsTab implements OnInit {
         }
       }
 
-      // Step 2: Insert Job Skills (if any) — only if we have reqId
+      // Step 2: Insert Job Skills
       if (reqId) {
         for (const skill of this.selectedSkills) {
           try {
@@ -364,7 +435,7 @@ export class JobsTab implements OnInit {
           }
         }
 
-        // Step 3: Auto-create Approval record for Leadership
+        // Step 3: Auto-create Approval record
         try {
           await this.soap.insertApproval({
             entity_type: 'REQUISITION',
@@ -376,10 +447,12 @@ export class JobsTab implements OnInit {
           console.warn('[Jobs] Failed to create approval:', e);
         }
 
-        this.showToast(`Requisition ${reqId} created and sent for approval!`, 'success');
+        // Step 4: Trigger BPM and store manager email + task ID
+        await this.triggerBPMForRequisition(reqId);
+
+        this.showToast(`Requisition ${reqId} created and sent for BPM approval!`, 'success');
       } else {
-        // Data was inserted but we couldn't get the ID — still a success
-        console.warn('[Jobs] Requisition created but ID could not be extracted. Skills/approval skipped.');
+        console.warn('[Jobs] Requisition created but ID could not be extracted.');
         this.showToast('Job requisition created successfully!', 'success');
       }
 
@@ -389,6 +462,119 @@ export class JobsTab implements OnInit {
     } catch (err) {
       console.error('Failed to create requisition:', err);
       this.showToast('Failed to create job requisition. Please try again.', 'error');
+    } finally {
+      this.isSubmitting = false;
+    }
+  }
+
+  /**
+   * Trigger BPM for a requisition: send to manager email from mt_departments.temp1.
+   */
+  private async triggerBPMForRequisition(reqId: string): Promise<void> {
+    try {
+      // 1) First fetch the department id from the form
+      const deptId = this.form.department_id;
+      if (!deptId) {
+        console.warn('[Jobs] No department ID available to fetch manager email.');
+        return;
+      }
+
+      // 2) Look up the department directly to get the manager email from temp1
+      let managerEmail = '';
+      try {
+        const dept = await this.soap.getDepartmentById(deptId);
+        if (dept && dept['temp1']) {
+          managerEmail = dept['temp1'];
+        }
+      } catch (e) {
+        console.warn('[Jobs] Failed to fetch department for manager email:', e);
+      }
+
+      if (!managerEmail) {
+        console.warn('[Jobs] No manager email found in department temp1. BPM trigger skipped.');
+        return;
+      }
+
+      // Trigger BPM
+      const bpmResp = await this.soap.triggerRequisitionBPM(managerEmail, reqId);
+      console.log('[Jobs] BPM triggered, response:', JSON.stringify(bpmResp).substring(0, 300));
+
+      // Extract task ID from BPM response
+      let taskId = '';
+      try {
+        const tid = $.cordys.json.find(bpmResp, 'TaskId');
+        taskId = typeof tid === 'string' ? tid : (Array.isArray(tid) ? tid[0] : '');
+      } catch (e) { /* ignore */ }
+      if (!taskId) {
+        try {
+          const respStr = JSON.stringify(bpmResp);
+          const m = respStr.match(/"TaskId"\s*:\s*"([^"]+)"/i);
+          if (m) taskId = m[1];
+        } catch (e) { /* ignore */ }
+      }
+
+      if (taskId) {
+        // Refetch to get latest data after temp1 update
+        const freshData = await this.soap.getJobRequisitionById(reqId);
+        if (freshData) {
+          await this.soap.updateJobRequisitionTemp(freshData, { temp2: taskId });
+        }
+        console.log(`[Jobs] BPM Task ID stored: ${taskId}`);
+      }
+
+    } catch (err) {
+      console.error('[Jobs] BPM trigger failed (non-blocking):', err);
+      // BPM failure is non-blocking — requisition was already created
+    }
+  }
+
+  /**
+   * Resubmit a rejected job requisition — update the job, re-trigger BPM.
+   */
+  private async resubmitJob(): Promise<void> {
+    try {
+      const oldData = this.editingOldData;
+      const newData: Record<string, string> = {
+        ...oldData,
+        title: this.form.title.trim(),
+        department_id: this.form.department_id,
+        description: this.form.description.trim(),
+        experience_min: this.form.experience_min || '0',
+        experience_max: this.form.experience_max || '0',
+        salary_min: this.form.salary_min || '0',
+        salary_max: this.form.salary_max || '0',
+        salary_currency: this.form.salary_currency,
+        open_positions: this.form.open_positions,
+        posting_source: this.form.posting_source,
+        status: 'PENDING',
+        temp3: '',  // Clear rejection reason
+      };
+
+      // Update the job requisition
+      await this.soap.updateJobRequisition(oldData, newData);
+
+      // Re-create approval record
+      try {
+        await this.soap.insertApproval({
+          entity_type: 'REQUISITION',
+          entity_id: this.editingReqId,
+          requested_by: this.loggedInUserId,
+          comments: `Resubmitted: ${this.form.title.trim()}`
+        });
+      } catch (e) {
+        console.warn('[Jobs] Failed to create re-approval:', e);
+      }
+
+      // Re-trigger BPM
+      await this.triggerBPMForRequisition(this.editingReqId);
+
+      this.showToast(`Requisition ${this.editingReqId} resubmitted for approval!`, 'success');
+      this.closeForm();
+      await this.loadJobs();
+
+    } catch (err) {
+      console.error('Failed to resubmit:', err);
+      this.showToast('Failed to resubmit requisition.', 'error');
     } finally {
       this.isSubmitting = false;
     }
@@ -446,6 +632,7 @@ export class JobsTab implements OnInit {
       case 'APPROVED': return 'badge-success';
       case 'PENDING': return 'badge-warning';
       case 'CLOSED': return 'badge-danger';
+      case 'REJECTED': return 'badge-rejected';
       default: return 'badge-muted';
     }
   }
@@ -455,6 +642,7 @@ export class JobsTab implements OnInit {
       case 'APPROVED': return 'Approved';
       case 'PENDING': return 'Pending Approval';
       case 'CLOSED': return 'Closed';
+      case 'REJECTED': return 'Rejected';
       default: return status;
     }
   }

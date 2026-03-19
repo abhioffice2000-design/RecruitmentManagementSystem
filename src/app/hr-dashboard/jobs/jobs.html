@@ -20,6 +20,7 @@
           <option value="ALL">All Statuses</option>
           <option value="PENDING">Pending Approval</option>
           <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
           <option value="CLOSED">Closed</option>
         </select>
         <button class="btn-primary" (click)="openForm()">
@@ -85,6 +86,9 @@
             <td class="text-muted">{{ formatDate(job.created_at) }}</td>
             <td>
               <button class="btn-view" (click)="viewDetails(job)">View Details</button>
+              <button class="btn-edit" *ngIf="job.status === 'REJECTED'" (click)="editJob(job)">
+                ✏️ Edit & Resubmit
+              </button>
             </td>
           </tr>
         </tbody>
@@ -100,8 +104,9 @@
   <div class="form-container" *ngIf="showForm">
     <div class="form-header-bar">
       <button class="btn-back" (click)="closeForm()">← Back to Requisitions</button>
-      <h3>Create New Job Requisition</h3>
-      <p class="form-subtitle">Fill in the details below. The requisition will be sent for leadership approval automatically.</p>
+      <h3>{{ isEditing ? '✏️ Edit Job Requisition' : 'Create New Job Requisition' }}</h3>
+      <p class="form-subtitle" *ngIf="!isEditing">Fill in the details below. The requisition will be sent for leadership approval automatically.</p>
+      <p class="form-subtitle" *ngIf="isEditing">Edit the rejected requisition and resubmit for approval. A new BPM task will be triggered.</p>
     </div>
 
     <form class="requisition-form" (ngSubmit)="submitJob()">
@@ -239,7 +244,7 @@
       <div class="form-actions">
         <button type="button" class="btn-cancel" (click)="closeForm()">Cancel</button>
         <button type="submit" class="btn-submit" [disabled]="isSubmitting">
-          {{ isSubmitting ? 'Creating...' : '🚀 Create & Submit for Approval' }}
+          {{ isSubmitting ? (isEditing ? 'Resubmitting...' : 'Creating...') : (isEditing ? '🔄 Resubmit for Approval' : '🚀 Create & Submit for Approval') }}
         </button>
       </div>
     </form>
@@ -288,6 +293,13 @@
           <div class="detail-item">
             <span class="label">Created</span>
             <span class="value">{{ formatDate(selectedJob.created_at) }}</span>
+          </div>
+        </div>
+
+        <div class="detail-section" *ngIf="selectedJob.temp3">
+          <h4>❌ Rejection Reason</h4>
+          <div class="rejection-reason-box">
+            <p>{{ selectedJob.temp3 }}</p>
           </div>
         </div>
 

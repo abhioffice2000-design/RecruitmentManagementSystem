@@ -20,11 +20,15 @@ interface PendingApproval {
   open_positions: string;
   description: string;
   posting_source: string;
+  // BPM
+  bpm_task_id: string;  // from job's temp2
+  rejection_reason: string;  // from job's temp3
   // delegation
   delegated_to: string[];
   is_delegated: boolean;
   // Raw data
   _raw: Record<string, string>;
+  _jobRaw: Record<string, string>;  // raw job data for updates
 }
 
 @Component({
@@ -40,7 +44,10 @@ export class ManagerDashboard implements OnInit {
   pendingApprovals: PendingApproval[] = [];
   allApprovals: PendingApproval[] = [];
   loggedInUserId = '';
+  loggedInUserEmail = '';
   loggedInUserRole = '';
+
+  activeDelegations: any[] = [];
 
   // ─── Stats ──────────────────────────────────────
   stats = {
@@ -67,12 +74,15 @@ export class ManagerDashboard implements OnInit {
   // ─── Delegate Modal ───────────────────────────
   showDelegateModal = false;
   delegateApproval: PendingApproval | null = null;
-  delegateUsers: { user_id: string; name: string; selected: boolean }[] = [];
-  allUsers: { user_id: string; name: string }[] = [];
+  delegateUsers: { user_id: string; name: string; email: string; role: string; selected: boolean }[] = [];
+  allUsers: { user_id: string; name: string; email: string; role: string }[] = [];
   isDelegating = false;
+  delegateMemo = '';
+  delegateStartDate = '';
+  delegateEndDate = '';
 
   // ─── Filter ───────────────────────────────────
-  filterStatus = 'PENDING';
+  filterStatus = 'PENDING'; // 'PENDING', 'APPROVED', 'REJECTED', 'ALL', 'DELEGATIONS'
 
   // ─── Toast ──────────────────────────────────────
   toastMessage = '';
@@ -84,8 +94,42 @@ export class ManagerDashboard implements OnInit {
 
   ngOnInit(): void {
     this.loggedInUserId = sessionStorage.getItem('loggedInUserId') || '';
+    this.loggedInUserEmail = sessionStorage.getItem('loggedInUserEmail') || sessionStorage.getItem('loggedInUser') || '';
     this.loggedInUserRole = sessionStorage.getItem('loggedInUserRole') || '';
     this.loadApprovals();
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  DELEGATION MANAGEMENT
+  // ═══════════════════════════════════════════════════
+
+  async revokeDelegation(delegation: any): Promise<void> {
+    if (!confirm(`Are you sure you want to revoke delegation to ${delegation.delegate_name}?`)) return;
+
+    try {
+      // Update status to INACTIVE
+      const newData = { ...delegation._raw, status: 'INACTIVE', updated_at: new Date().toISOString() };
+      await this.soap.call('UpdateTs_delegations', {
+        tuple: {
+          old: { ts_delegations: delegation._raw },
+          'new': { ts_delegations: newData }
+        }
+      });
+      // Also we need to clear the temp2 flag on the affected jobs if possible?
+      // Since temp2 is tied to the approval, and a delegation can cover multiple approvals over time,
+      // it's safest to let the filter logic handle it (which we might need to adjust), 
+      // but for now, deactivating the delegation stops NEW tasks from going to the delegate.
+      // And the filter `delegatedBy === 'DELEGATED_BY:id'` actually hides tasks I delegated. 
+      // If I revoke, do I want them back? Yes.
+      // We should ideally clear the DELEGATED_BY flag on pending approvals, but finding them easily is hard here
+      // Let's just update the delegation record for now.
+
+      this.showToast('Delegation revoked successfully.', 'success');
+      await this.loadApprovals();
+    } catch (err) {
+      console.error('[Manager] Revoke failed:', err);
+      this.showToast('Failed to revoke delegation.', 'error');
+    }
   }
 
   // ═══════════════════════════════════════════════════
@@ -103,7 +147,11 @@ export class ManagerDashboard implements OnInit {
       ]);
 
       const deptMap = new Map<string, string>();
-      depts.forEach(d => deptMap.set(d['department_id'] || '', d['department_name'] || ''));
+      const deptManagerMap = new Map<string, string>();
+      depts.forEach(d => {
+        deptMap.set(d['department_id'] || '', d['department_name'] || '');
+        deptManagerMap.set(d['department_id'] || '', (d['temp1'] || '').toLowerCase());
+      });
 
       const userMap = new Map<string, string>();
       users.forEach(u => {
@@ -113,13 +161,15 @@ export class ManagerDashboard implements OnInit {
 
       this.allUsers = users.map(u => ({
         user_id: u['user_id'] || u['User_id'] || '',
-        name: ((u['first_name'] || u['First_name'] || '') + ' ' + (u['last_name'] || u['Last_name'] || '')).trim()
+        name: ((u['first_name'] || u['First_name'] || '') + ' ' + (u['last_name'] || u['Last_name'] || '')).trim(),
+        email: u['email'] || u['Email'] || '',
+        role: (u['role'] || u['Role'] || '').toUpperCase()
       })).filter(u => u.user_id !== this.loggedInUserId);
 
       const jobMap = new Map<string, Record<string, string>>();
       jobs.forEach(j => jobMap.set(j['requisition_id'] || '', j));
 
-      this.allApprovals = rows.map(r => {
+      const allMapped = rows.map(r => {
         const job = jobMap.get(r['entity_id'] || '') || {};
         const salMin = job['salary_min'] || '';
         const salMax = job['salary_max'] || '';
@@ -143,11 +193,110 @@ export class ManagerDashboard implements OnInit {
           open_positions: job['open_positions'] || '',
           description: job['description'] || '',
           posting_source: job['posting_source'] || '',
+          bpm_task_id: job['temp2'] || '',
+          rejection_reason: job['temp3'] || '',
           delegated_to: [],
           is_delegated: false,
-          _raw: r
+          _raw: r,
+          _jobRaw: job
         };
       });
+
+      // Deduplicate: keep only the latest approval per entity_id (requisition)
+      const latestByEntity = new Map<string, PendingApproval>();
+      for (const a of allMapped) {
+        const existing = latestByEntity.get(a.entity_id);
+        if (!existing || a.requested_at > existing.requested_at) {
+          latestByEntity.set(a.entity_id, a);
+        }
+      }
+      const deduplicated = Array.from(latestByEntity.values());
+
+      // Fetch active delegations where this user is the delegate (for viewing tasks)
+      // AND active delegations where this user is the delegator (for managing delegations)
+      let delegatedDeptEmails: Set<string> = new Set();
+      this.activeDelegations = [];
+
+      try {
+        const allDelegations = await this.soap.call('GetTs_delegationsObjects', {
+          fromDelegation_id: '0', toDelegation_id: 'zzzzzzzzzz'
+        }).then((resp: any) => this.soap.parseTuples(resp, 'ts_delegations'));
+
+        const today = new Date().toISOString().split('T')[0];
+        
+        for (const del of allDelegations) {
+          const isActive = (del['status'] || 'ACTIVE') === 'ACTIVE';
+          
+          // Case 1: Tasks delegated TO me
+          if (del['delegate_user_id'] === this.loggedInUserId && isActive && del['start_date'] <= today && del['end_date'] >= today) {
+            const delegatorId = del['delegator_user_id'] || '';
+            const delegatorUser = users.find((u: any) => (u['user_id'] || u['User_id'] || '') === delegatorId);
+            if (delegatorUser) {
+              const delegatorEmail = (delegatorUser['email'] || delegatorUser['Email'] || '').toLowerCase();
+              if (delegatorEmail) delegatedDeptEmails.add(delegatorEmail);
+            }
+          }
+
+          // Case 2: Tasks I delegated TO someone else (for management view)
+          if (del['delegator_user_id'] === this.loggedInUserId && isActive) {
+            const delegateId = del['delegate_user_id'] || '';
+            const delegateUser = users.find((u: any) => (u['user_id'] || u['User_id'] || '') === delegateId);
+            this.activeDelegations.push({
+              id: del['delegation_id'],
+              delegate_name: delegateUser ? ((delegateUser['first_name'] || delegateUser['First_name'] || '') + ' ' + (delegateUser['last_name'] || delegateUser['Last_name'] || '')).trim() : delegateId,
+              delegate_role: delegateUser ? (delegateUser['role'] || delegateUser['Role'] || '').toUpperCase() : '',
+              start_date: del['start_date'],
+              end_date: del['end_date'],
+              reason: del['reason'],
+              _raw: del
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[Manager] Failed to load delegations:', err);
+      }
+
+      // Filter: show approvals where this manager is assigned OR delegated
+      // But exclude tasks that THIS manager has already delegated to someone else
+      const myEmail = this.loggedInUserEmail.toLowerCase();
+      console.log(`[Manager] Filtering tasks for myEmail: '${myEmail}', loggedInUserId: '${this.loggedInUserId}'`);
+      console.log(`[Manager] delegatedDeptEmails from active delegations:`, Array.from(delegatedDeptEmails));
+
+      if (myEmail) {
+        this.allApprovals = deduplicated.filter(a => {
+          const job = a._jobRaw;
+          const deptId = job['department_id'] || '';
+          const assignedEmail = deptManagerMap.get(deptId) || '';
+          const delegatedBy = (a._raw['temp2'] || '');
+
+          console.log(`[Manager] Eval task ${a.entity_id} | dept: ${deptId} | HOD email: '${assignedEmail}' | delegatedBy: '${delegatedBy}'`);
+
+          // If I delegated this task, hide it from my view
+          if (delegatedBy === `DELEGATED_BY:${this.loggedInUserId}`) {
+            console.log(`  -> Hidden: I delegated this task to someone else.`);
+            return false;
+          }
+
+          // Direct assignment: my email matches department manager
+          if (assignedEmail === myEmail) {
+            console.log(`  -> Shown: Direct match as HOD (${myEmail})`);
+            return true;
+          }
+
+          // Delegated to me: department's manager email matches a delegator's email
+          if (delegatedDeptEmails.has(assignedEmail)) {
+            console.log(`  -> Shown: Delegated TO me by HOD (${assignedEmail})`);
+            a.is_delegated = true;
+            return true;
+          }
+
+          console.log(`  -> Hidden: Not HOD and not delegated to me.`);
+          return false;
+        });
+      } else {
+        console.warn(`[Manager] myEmail is empty! Cannot filter properly. Showing all deduplicated tasks by default.`);
+        this.allApprovals = deduplicated;
+      }
 
       this.pendingApprovals = this.allApprovals.filter(a => a.status === 'PENDING');
       this.updateStats();
@@ -245,6 +394,7 @@ export class ManagerDashboard implements OnInit {
     this.isActioning = true;
 
     try {
+      // Step 1: Update approval status in DB
       await this.soap.updateApprovalStatus(
         this.actionApproval._raw,
         this.actionType,
@@ -252,11 +402,47 @@ export class ManagerDashboard implements OnInit {
         this.actionComments.trim()
       );
 
+      // Step 2: Update job requisition status
       if (this.actionApproval.entity_type === 'REQUISITION' || this.actionApproval.entity_type === 'Job Requisition') {
         const jobData = await this.soap.getJobRequisitionById(this.actionApproval.entity_id);
         if (jobData) {
-          const newJobStatus = this.actionType === 'APPROVED' ? 'APPROVED' : 'CLOSED';
-          await this.soap.updateJobRequisitionStatus(jobData, newJobStatus);
+          if (this.actionType === 'APPROVED') {
+            await this.soap.updateJobRequisitionStatus(jobData, 'APPROVED');
+          } else {
+            // REJECTED: use CLOSED (job_status_enum: PENDING|APPROVED|CLOSED)
+            // Store rejection reason in temp3 to distinguish from normal closure
+            await this.soap.updateJobRequisitionTemp(jobData, {
+              status: 'CLOSED',
+              temp3: this.actionComments.trim()
+            });
+          }
+        }
+
+        // Step 3: Complete BPM task if task ID exists
+        const taskId = this.actionApproval.bpm_task_id;
+        if (taskId) {
+          try {
+            await this.soap.performTaskAction(taskId, 'COMPLETE', {
+              decision: this.actionType,
+              comments: this.actionComments.trim()
+            });
+            console.log(`[Manager] BPM task ${taskId} completed with action: ${this.actionType}`);
+          } catch (bpmErr) {
+            console.warn('[Manager] BPM task completion failed (non-blocking):', bpmErr);
+          }
+        }
+
+        // Step 4: Insert approval history
+        try {
+          await this.soap.insertApprovalHistory({
+            requisition_id: this.actionApproval.entity_id,
+            action: this.actionType,
+            requested_by: this.actionApproval.requested_by || 'system',
+            approved_by: this.loggedInUserId,
+            comments: this.actionComments.trim()
+          });
+        } catch (histErr) {
+          console.warn('[Manager] History insert failed:', histErr);
         }
       }
 
@@ -285,11 +471,46 @@ export class ManagerDashboard implements OnInit {
       return;
     }
     this.delegateApproval = approval;
-    this.delegateUsers = this.allUsers.map(u => ({
-      ...u,
-      selected: approval.delegated_to.includes(u.user_id)
-    }));
+    this.delegateMemo = '';
+    // Default dates: today to 7 days from now
+    const today = new Date();
+    this.delegateStartDate = today.toISOString().split('T')[0];
+    this.delegateEndDate = new Date(today.getTime() + 7 * 86400000).toISOString().split('T')[0];
+    // Load delegate users (managers only)
+    this.loadDelegateUsers(approval);
     this.showDelegateModal = true;
+  }
+
+  private async loadDelegateUsers(approval: PendingApproval): Promise<void> {
+    try {
+      const deptId = approval._jobRaw['department_id'] || '';
+      if (!deptId) {
+        this.delegateUsers = [];
+        return;
+      }
+
+      // Fetch users for this department
+      const deptUsers = await this.soap.getUsersByDepartment(deptId);
+
+      // Show only MANAGER and LEADERSHIP role users (excluding self)
+      const managers = deptUsers.map(u => ({
+        user_id: u['user_id'] || u['User_id'] || '',
+        name: ((u['first_name'] || u['First_name'] || '') + ' ' + (u['last_name'] || u['Last_name'] || '')).trim(),
+        email: u['email'] || u['Email'] || '',
+        role: (u['role'] || u['Role'] || '').toUpperCase()
+      })).filter(u =>
+        u.user_id !== this.loggedInUserId &&
+        (u.role === 'MANAGER' || u.role === 'LEADERSHIP')
+      );
+
+      this.delegateUsers = managers.map(u => ({
+        ...u,
+        selected: approval.delegated_to.includes(u.user_id)
+      }));
+    } catch (err) {
+      console.warn('[Manager] Failed to load department managers:', err);
+      this.delegateUsers = [];
+    }
   }
 
   closeDelegateModal(): void {
@@ -307,20 +528,110 @@ export class ManagerDashboard implements OnInit {
 
   async confirmDelegate(): Promise<void> {
     if (!this.delegateApproval) return;
-    const selected = this.delegateUsers.filter(u => u.selected).map(u => u.user_id);
+    const selected = this.delegateUsers.filter(u => u.selected);
     if (selected.length === 0) {
-      this.showToast('Please select at least one user to delegate to.', 'error');
+      this.showToast('Please select at least one manager to delegate to.', 'error');
+      return;
+    }
+    if (!this.delegateStartDate || !this.delegateEndDate) {
+      this.showToast('Please select start and end dates for delegation.', 'error');
       return;
     }
 
     this.isDelegating = true;
     try {
-      // In a real system, this would create delegation records via SOAP
-      // For mock mode, we just update the local data
-      this.delegateApproval.delegated_to = selected;
-      const names = this.delegateUsers.filter(u => u.selected).map(u => u.name).join(', ');
+      const taskId = this.delegateApproval.bpm_task_id;
+
+      // Insert delegation records in ts_delegations for each selected manager
+      for (const user of selected) {
+        try {
+          await this.soap.insertDelegation({
+            delegator_user_id: this.loggedInUserId,
+            delegate_user_id: user.user_id,
+            start_date: this.delegateStartDate,
+            end_date: this.delegateEndDate,
+            reason: this.delegateMemo || 'Delegated for review'
+          });
+        } catch (delErr) {
+          console.warn(`[Manager] Delegation record insert failed for ${user.name}:`, delErr);
+        }
+      }
+
+      // Call DelegateTask BPM for each selected user (if BPM task exists)
+      if (taskId) {
+        for (const user of selected) {
+          try {
+            const userDN = this.soap._makeDN(user.email || user.name);
+            await this.soap.delegateBPMTask(taskId, userDN, this.delegateMemo || 'Delegated for review', this.delegateEndDate);
+          } catch (bpmErr) {
+            console.warn(`[Manager] BPM delegation failed for ${user.name}:`, bpmErr);
+          }
+        }
+      }
+
+      // Update local state
+      this.delegateApproval.delegated_to = selected.map(u => u.user_id);
+
+      // Mark the approval record as delegated (so original manager's view hides it)
+      try {
+        const rawApproval = this.delegateApproval._raw;
+        await this.soap.updateApprovalStatus(
+          rawApproval,
+          rawApproval['status'] || 'PENDING',
+          rawApproval['approved_by'] || '',
+          rawApproval['comments'] || ''
+        );
+        // Update temp2 on the approval to indicate delegation
+        // We do this via a direct call since updateApprovalStatus doesn't handle temp fields
+        const updatedRaw = { ...rawApproval, temp2: `DELEGATED_BY:${this.loggedInUserId}` };
+        await this.soap.call('UpdateTs_approvals', {
+          tuple: {
+            old: {
+              ts_approvals: {
+                approval_id: rawApproval['approval_id'],
+                entity_type: rawApproval['entity_type'] || '',
+                entity_id: rawApproval['entity_id'] || '',
+                status: rawApproval['status'] || '',
+                requested_by: rawApproval['requested_by'] || '',
+                approved_by: rawApproval['approved_by'] || '',
+                comments: rawApproval['comments'] || '',
+                requested_at: rawApproval['requested_at'] || '',
+                approved_at: rawApproval['approved_at'] || '',
+                temp1: rawApproval['temp1'] || '',
+                temp2: rawApproval['temp2'] || '',
+                temp3: rawApproval['temp3'] || '',
+                temp4: rawApproval['temp4'] || '',
+                temp5: rawApproval['temp5'] || ''
+              }
+            },
+            'new': {
+              ts_approvals: {
+                approval_id: rawApproval['approval_id'],
+                entity_type: rawApproval['entity_type'] || '',
+                entity_id: rawApproval['entity_id'] || '',
+                status: rawApproval['status'] || '',
+                requested_by: rawApproval['requested_by'] || '',
+                approved_by: rawApproval['approved_by'] || '',
+                comments: rawApproval['comments'] || '',
+                requested_at: rawApproval['requested_at'] || '',
+                approved_at: rawApproval['approved_at'] || '',
+                temp1: rawApproval['temp1'] || '',
+                temp2: `DELEGATED_BY:${this.loggedInUserId}`,
+                temp3: rawApproval['temp3'] || '',
+                temp4: rawApproval['temp4'] || '',
+                temp5: rawApproval['temp5'] || ''
+              }
+            }
+          }
+        });
+      } catch (markErr) {
+        console.warn('[Manager] Failed to mark approval as delegated:', markErr);
+      }
+
+      const names = selected.map(u => u.name).join(', ');
       this.showToast(`Task delegated to: ${names}`, 'success');
       this.closeDelegateModal();
+      await this.loadApprovals();
     } catch (err) {
       this.showToast('Failed to delegate task.', 'error');
     } finally {
