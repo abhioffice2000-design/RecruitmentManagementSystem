@@ -158,6 +158,14 @@ h3 { font-size: 1.25rem; }
   border-bottom: none;
 }
 
+/* Column Alignment Helpers */
+.enterprise-table th.status-col, 
+.enterprise-table td.status-col,
+.enterprise-table th.actions-col,
+.enterprise-table td.actions-col {
+  text-align: center;
+}
+
 /* Badges */
 .badge {
   display: inline-flex;

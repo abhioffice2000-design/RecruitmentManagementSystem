@@ -1,568 +1,669 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { SoapService } from '../../services/soap.service';
+
+declare var $: any;
+
+// ===== Interfaces =====
+interface Department {
+  department_id: string;
+  department_name: string;
+}
+
+interface Skill {
+  skill_id: string;
+  skill_name: string;
+}
+
+interface JobRequisition {
+  requisition_id: string;
+  title: string;
+  department_id: string;
+  department_name?: string;
+  description: string;
+  experience_min: string;
+  experience_max: string;
+  salary_min: string;
+  salary_max: string;
+  salary_currency: string;
+  open_positions: string;
+  status: string;
+  posting_source: string;
+  created_by_user: string;
+  created_at: string;
+  approval_status?: string;
+  temp1?: string;  // Manager email
+  temp2?: string;  // BPM Task ID
+  temp3?: string;  // Rejection reason
+  _raw?: Record<string, string>;  // Raw data for updates
+}
+
+interface SelectedSkill {
+  skill_id: string;
+  skill_name: string;
+  required_level: string;
+}
+
+// ===== Form model =====
+interface JobForm {
+  title: string;
+  department_id: string;
+  description: string;
+  experience_min: string;
+  experience_max: string;
+  salary_min: string;
+  salary_max: string;
+  salary_currency: string;
+  open_positions: string;
+  posting_source: string;
+}
 
 @Component({
   selector: 'app-jobs',
   standalone: true,
-  imports: [CommonModule],
-  template: `
-    <div class="dashboard-content">
-      <div class="header">
-        <h2>Job Postings</h2>
-        <div class="user-info">
-          <span class="icon">🔔</span>
-          <div class="profile">
-            <div class="text">
-              <span class="name">Asley Green</span>
-              <span class="role">Lead HR</span>
-            </div>
-            <img src="https://via.placeholder.com/40" alt="profile">
-          </div>
-        </div>
-      </div>
-      
-      <div class="jobs-container" *ngIf="!showForm">
-        <div class="jobs-header">
-          <h3>Active & Past Postings</h3>
-          <div class="controls">
-            <div class="search-wrap">
-              <span class="search-icon">🔍</span>
-              <input type="text" placeholder="Search jobs..." class="search-input">
-            </div>
-            <button class="btn-primary" (click)="toggleForm()">
-              <span class="plus-icon">+</span>
-              Add New Job
-            </button>
-          </div>
-        </div>
-
-        <div class="jobs-grid">
-          <div class="job-card" *ngFor="let job of jobs">
-            <div class="card-header">
-              <div class="title-section">
-                <h4>{{ job.title }}</h4>
-                <span class="department-tag">{{ job.department }}</span>
-              </div>
-              <button class="menu-dots">⋮</button>
-            </div>
-            
-            <div class="job-stats">
-              <div class="stat">
-                <span class="value">{{ job.applicants }}</span>
-                <span class="label">Total Applicants</span>
-              </div>
-              <div class="stat divider"></div>
-              <div class="stat">
-                <span class="value">{{ job.newApplicants }}</span>
-                <span class="label">New in 24h</span>
-              </div>
-            </div>
-            
-            <div class="job-details">
-              <div class="detail-row">
-                <span class="icon">📍</span>
-                <span>{{ job.location }} ({{ job.type }})</span>
-              </div>
-              <div class="detail-row">
-                <span class="icon">🕒</span>
-                <span>Posted: {{ job.postedDate }}</span>
-              </div>
-            </div>
-            
-            <div class="card-footer">
-              <span class="status-badge" [ngClass]="job.status.toLowerCase()">
-                <span class="dot"></span> {{ job.status }}
-              </span>
-              <button class="btn-outline">View Details</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Add New Job Form -->
-      <div class="job-form-container" *ngIf="showForm">
-        <div class="form-header">
-          <button class="btn-back" (click)="toggleForm()">← Back to Jobs</button>
-          <h3>Create New Job Posting</h3>
-        </div>
-        
-        <form class="job-form">
-          <div class="form-group">
-            <label>Job Title</label>
-            <input type="text" placeholder="e.g. Senior Frontend Developer" class="form-input">
-          </div>
-          
-          <div class="form-row">
-            <div class="form-group">
-              <label>Department</label>
-              <select class="form-input">
-                <option>Engineering</option>
-                <option>Design</option>
-                <option>Marketing</option>
-                <option>HR</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Employment Type</label>
-              <select class="form-input">
-                <option>Full-time</option>
-                <option>Part-time</option>
-                <option>Contract</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label>Location</label>
-              <input type="text" placeholder="e.g. San Francisco, CA" class="form-input">
-            </div>
-            <div class="form-group">
-              <label>Work Model</label>
-              <select class="form-input">
-                <option>Remote</option>
-                <option>Hybrid</option>
-                <option>Onsite</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Job Description</label>
-            <textarea placeholder="Enter detailed job description and requirements..." class="form-input" rows="6"></textarea>
-          </div>
-          
-          <div class="form-actions">
-            <button type="button" class="btn-outline" (click)="toggleForm()">Cancel</button>
-            <button type="button" class="btn-primary" (click)="toggleForm()">Post Job</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  `,
-  styleUrls: ['../../hr-dashboard/hr-dashboard.scss'],
-  styles: [`
-    .jobs-container {
-      background: transparent;
-      
-      .jobs-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        background: #fff;
-        padding: 20px 24px;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        border: 1px solid #e2e8f0;
-        
-        h3 {
-          margin: 0;
-          font-size: 20px;
-          color: var(--text-dark);
-          font-weight: 700;
-        }
-        
-        .controls {
-          display: flex;
-          gap: 16px;
-          align-items: center;
-          
-          .search-wrap {
-            position: relative;
-            .search-icon {
-              position: absolute;
-              left: 12px;
-              top: 50%;
-              transform: translateY(-50%);
-              font-size: 14px;
-              color: var(--text-gray);
-            }
-            .search-input {
-              padding: 10px 16px 10px 36px;
-              border: 1px solid #e2e8f0;
-              border-radius: 8px;
-              font-size: 14px;
-              width: 250px;
-              outline: none;
-              color: var(--text-dark);
-              transition: border-color 0.2s;
-              
-              &:focus {
-                border-color: var(--accent-color);
-              }
-            }
-          }
-          
-          .btn-primary {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--accent-color);
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background 0.2s;
-            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-            
-            .plus-icon {
-              font-size: 18px;
-              font-weight: 400;
-            }
-            
-            &:hover {
-              background: var(--accent-hover);
-            }
-          }
-        }
-      }
-
-      .jobs-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-        gap: 24px;
-
-        .job-card {
-          background: #fff;
-          border-radius: 12px;
-          padding: 24px;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-          border: 1px solid #e2e8f0;
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
-          
-          &:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-          }
-
-          .card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
-            
-            .title-section {
-              h4 {
-                margin: 0 0 8px 0;
-                font-size: 18px;
-                font-weight: 700;
-                color: var(--text-dark);
-              }
-              .department-tag {
-                display: inline-block;
-                padding: 4px 10px;
-                background: #f1f5f9;
-                color: var(--text-gray);
-                border-radius: 20px;
-                font-size: 12px;
-                font-weight: 600;
-              }
-            }
-            
-            .menu-dots {
-              background: none;
-              border: none;
-              font-size: 20px;
-              color: var(--text-gray);
-              cursor: pointer;
-              padding: 0 4px;
-              line-height: 1;
-              &:hover { color: var(--text-dark); }
-            }
-          }
-
-          .job-stats {
-            display: flex;
-            align-items: center;
-            background: #f8fafc;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 20px;
-            
-            .stat {
-              flex: 1;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              gap: 4px;
-              
-              .value {
-                font-size: 20px;
-                font-weight: 800;
-                color: var(--text-dark);
-              }
-              .label {
-                font-size: 12px;
-                color: var(--text-gray);
-                font-weight: 500;
-              }
-            }
-            
-            .divider {
-              flex: 0;
-              width: 1px;
-              height: 32px;
-              background: #e2e8f0;
-            }
-          }
-
-          .job-details {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 24px;
-            
-            .detail-row {
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              font-size: 14px;
-              color: var(--text-gray);
-              
-              .icon {
-                font-size: 16px;
-              }
-            }
-          }
-
-          .card-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: 20px;
-            border-top: 1px solid #f1f5f9;
-            
-            .status-badge {
-              display: flex;
-              align-items: center;
-              gap: 6px;
-              font-size: 13px;
-              font-weight: 600;
-              
-              .dot {
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-              }
-
-              &.active { 
-                color: #166534;
-                .dot { background: #22c55e; }
-              }
-              &.closed { 
-                color: #991b1b;
-                .dot { background: #ef4444; }
-              }
-              &.draft { 
-                color: #854d0e;
-                .dot { background: #eab308; }
-              }
-            }
-            
-            .btn-outline {
-              background: transparent;
-              border: 1px solid #e2e8f0;
-              padding: 8px 16px;
-              border-radius: 6px;
-              color: var(--text-dark);
-              font-weight: 600;
-              font-size: 13px;
-              cursor: pointer;
-              transition: all 0.2s;
-              
-              &:hover {
-                background: #f8fafc;
-                border-color: #cbd5e1;
-              }
-            }
-          }
-        }
-      }
-    }
-
-    .job-form-container {
-      background: #fff;
-      border-radius: 12px;
-      padding: 32px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      border: 1px solid #e2e8f0;
-      
-      .form-header {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        margin-bottom: 32px;
-        border-bottom: 1px solid #f1f5f9;
-        padding-bottom: 24px;
-        
-        .btn-back {
-          background: none;
-          border: none;
-          color: var(--text-gray);
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          margin-bottom: 16px;
-          padding: 0;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          
-          &:hover { color: var(--accent-color); }
-        }
-        
-        h3 {
-          margin: 0;
-          font-size: 24px;
-          color: var(--text-dark);
-          font-weight: 800;
-        }
-      }
-      
-      .job-form {
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        
-        .form-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 24px;
-        }
-        
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          
-          label {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-dark);
-          }
-          
-          .form-input {
-            padding: 12px 16px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 14px;
-            color: var(--text-dark);
-            outline: none;
-            font-family: inherit;
-            transition: all 0.2s;
-            
-            &:focus {
-              border-color: var(--accent-color);
-              box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-            }
-          }
-          
-          textarea {
-            resize: vertical;
-            min-height: 120px;
-          }
-        }
-        
-        .form-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 16px;
-          margin-top: 16px;
-          padding-top: 24px;
-          border-top: 1px solid #f1f5f9;
-          
-          .btn-outline {
-            background: #fff;
-            border: 1px solid #e2e8f0;
-            color: var(--text-dark);
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            
-            &:hover { background: #f8fafc; }
-          }
-          
-          .btn-primary {
-            background: var(--accent-color);
-            border: none;
-            color: #fff;
-            padding: 12px 32px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
-            
-            &:hover { background: var(--accent-hover); }
-          }
-        }
-      }
-    }
-  `]
+  imports: [CommonModule, FormsModule],
+  templateUrl: './jobs.html',
+  styleUrls: ['../../hr-dashboard/hr-dashboard.scss', './jobs.scss'],
 })
-export class JobsTab {
+export class JobsTab implements OnInit {
+  // ─── State ──────────────────────────────────────
   showForm = false;
+  isLoading = false;
+  isSubmitting = false;
+  jobs: JobRequisition[] = [];
+  departments: Department[] = [];
+  allSkills: Skill[] = [];
+  loggedInUserId = '';
+  loggedInUserEmail = '';
 
-  toggleForm() {
-    this.showForm = !this.showForm;
+  // ─── Form ───────────────────────────────────────
+  form: JobForm = this.emptyForm();
+  selectedSkills: SelectedSkill[] = [];
+  skillToAdd = '';
+  skillLevelToAdd = 'Intermediate';
+
+  // ─── Edit / Resubmit ────────────────────────────
+  isEditing = false;
+  editingReqId = '';
+  editingOldData: Record<string, string> = {};
+
+  // ─── Validation ─────────────────────────────────
+  errors: Record<string, string> = {};
+
+  // ─── Search / Filter ────────────────────────────
+  searchTerm = '';
+  statusFilter = 'ALL';
+
+  // ─── Toast ──────────────────────────────────────
+  toastMessage = '';
+  toastType: 'success' | 'error' = 'success';
+  showToastFlag = false;
+  private toastTimeout: any;
+
+  // ─── Detail View ────────────────────────────────
+  selectedJob: JobRequisition | null = null;
+  selectedJobSkills: SelectedSkill[] = [];
+  showDetailModal = false;
+
+  constructor(private soap: SoapService) {}
+
+  ngOnInit(): void {
+    this.loggedInUserId = sessionStorage.getItem('loggedInUserId') || '';
+    this.loggedInUserEmail = sessionStorage.getItem('loggedInUserEmail') || '';
+    this.loadJobs();
+    this.loadDepartments();
+    this.loadSkills();
   }
 
-  jobs = [
-    {
-      title: 'Senior Frontend Developer',
-      department: 'Engineering',
-      applicants: 142,
-      newApplicants: 12,
-      location: 'San Francisco, CA',
-      type: 'Hybrid',
-      postedDate: 'Oct 15, 2023',
-      status: 'Active'
-    },
-    {
-      title: 'Product Designer',
-      department: 'Design',
-      applicants: 89,
-      newApplicants: 5,
-      location: 'New York, NY',
-      type: 'Remote',
-      postedDate: 'Oct 18, 2023',
-      status: 'Active'
-    },
-    {
-      title: 'DevOps Engineer',
-      department: 'Infrastructure',
-      applicants: 45,
-      newApplicants: 2,
-      location: 'Austin, TX',
-      type: 'Onsite',
-      postedDate: 'Oct 20, 2023',
-      status: 'Active'
-    },
-    {
-      title: 'Marketing Manager',
-      department: 'Marketing',
-      applicants: 210,
-      newApplicants: 0,
-      location: 'Chicago, IL',
-      type: 'Hybrid',
-      postedDate: 'Sep 30, 2023',
-      status: 'Closed'
-    },
-    {
-      title: 'Backend Developer (Java)',
-      department: 'Engineering',
-      applicants: 0,
-      newApplicants: 0,
-      location: 'Seattle, WA',
-      type: 'Remote',
-      postedDate: 'Not Posted',
-      status: 'Draft'
+  // ═══════════════════════════════════════════════════
+  //  DATA LOADING
+  // ═══════════════════════════════════════════════════
+
+  async loadJobs(): Promise<void> {
+    this.isLoading = true;
+    try {
+      const rows = await this.soap.getJobRequisitions();
+      // Map department names
+      const deptMap = new Map<string, string>();
+      this.departments.forEach(d => deptMap.set(d.department_id, d.department_name));
+
+      this.jobs = rows.map(r => {
+        // Detect rejected: status=CLOSED + temp3 has rejection reason
+        let displayStatus = r['status'] || 'PENDING';
+        if (displayStatus === 'CLOSED' && r['temp3']) {
+          displayStatus = 'REJECTED';
+        }
+        return {
+          requisition_id: r['requisition_id'] || '',
+          title: r['title'] || '',
+          department_id: r['department_id'] || '',
+          department_name: deptMap.get(r['department_id'] || '') || r['department_id'] || '',
+          description: r['description'] || '',
+          experience_min: r['experience_min'] || '',
+          experience_max: r['experience_max'] || '',
+          salary_min: r['salary_min'] || '',
+          salary_max: r['salary_max'] || '',
+          salary_currency: r['salary_currency'] || 'INR',
+          open_positions: r['open_positions'] || '1',
+          status: displayStatus,
+          posting_source: r['posting_source'] || '',
+          created_by_user: r['created_by_user'] || '',
+          created_at: r['created_at'] || '',
+          temp1: r['temp1'] || '',
+          temp2: r['temp2'] || '',
+          temp3: r['temp3'] || '',
+          _raw: r,
+        };
+      });
+
+      // Re-map department names after departments load
+      if (this.departments.length > 0) {
+        this.jobs.forEach(j => {
+          j.department_name = deptMap.get(j.department_id) || j.department_id;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load jobs:', err);
+      this.showToast('Failed to load job requisitions.', 'error');
+    } finally {
+      this.isLoading = false;
     }
-  ];
+  }
+
+  async loadDepartments(): Promise<void> {
+    try {
+      const rows = await this.soap.getDepartments();
+      this.departments = rows.map(r => ({
+        department_id: r['department_id'] || '',
+        department_name: r['department_name'] || ''
+      }));
+      // Re-map job department names now that departments are loaded
+      const deptMap = new Map<string, string>();
+      this.departments.forEach(d => deptMap.set(d.department_id, d.department_name));
+      this.jobs.forEach(j => {
+        j.department_name = deptMap.get(j.department_id) || j.department_id;
+      });
+    } catch (err) {
+      console.error('Failed to load departments:', err);
+    }
+  }
+
+  async loadSkills(): Promise<void> {
+    try {
+      const rows = await this.soap.getSkills();
+      this.allSkills = rows.map(r => ({
+        skill_id: r['skill_id'] || '',
+        skill_name: r['skill_name'] || ''
+      }));
+    } catch (err) {
+      console.error('Failed to load skills:', err);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  FORM LIFECYCLE
+  // ═══════════════════════════════════════════════════
+
+  openForm(): void {
+    this.form = this.emptyForm();
+    this.selectedSkills = [];
+    this.errors = {};
+    this.isEditing = false;
+    this.editingReqId = '';
+    this.editingOldData = {};
+    this.showForm = true;
+  }
+
+  closeForm(): void {
+    this.showForm = false;
+    this.isEditing = false;
+    this.editingReqId = '';
+    this.editingOldData = {};
+    this.errors = {};
+  }
+
+  /**
+   * Edit a rejected job requisition — loads data into form in edit mode.
+   */
+  editJob(job: JobRequisition): void {
+    this.form = {
+      title: job.title,
+      department_id: job.department_id,
+      description: job.description,
+      experience_min: job.experience_min,
+      experience_max: job.experience_max,
+      salary_min: job.salary_min,
+      salary_max: job.salary_max,
+      salary_currency: job.salary_currency,
+      open_positions: job.open_positions,
+      posting_source: job.posting_source,
+    };
+    this.isEditing = true;
+    this.editingReqId = job.requisition_id;
+    this.editingOldData = job._raw || {};
+    this.selectedSkills = [];
+    this.errors = {};
+    this.showForm = true;
+
+    // Load existing skills for this job
+    this.soap.getJobSkillsByRequisition(job.requisition_id).then(skills => {
+      this.selectedSkills = skills.map(s => ({
+        skill_id: s['skill_id'] || '',
+        skill_name: this.allSkills.find(sk => sk.skill_id === s['skill_id'])?.skill_name || s['skill_id'],
+        required_level: s['required_level'] || 'Intermediate'
+      }));
+    }).catch(e => console.warn('[Jobs] Failed to load skills for edit:', e));
+  }
+
+  emptyForm(): JobForm {
+    return {
+      title: '',
+      department_id: '',
+      description: '',
+      experience_min: '',
+      experience_max: '',
+      salary_min: '',
+      salary_max: '',
+      salary_currency: 'INR',
+      open_positions: '1',
+      posting_source: 'Career Portal',
+    };
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  SKILL MANAGEMENT
+  // ═══════════════════════════════════════════════════
+
+  get availableSkills(): Skill[] {
+    const usedIds = new Set(this.selectedSkills.map(s => s.skill_id));
+    return this.allSkills.filter(s => !usedIds.has(s.skill_id));
+  }
+
+  addSkill(): void {
+    if (!this.skillToAdd) return;
+    const skill = this.allSkills.find(s => s.skill_id === this.skillToAdd);
+    if (skill) {
+      this.selectedSkills.push({
+        skill_id: skill.skill_id,
+        skill_name: skill.skill_name,
+        required_level: this.skillLevelToAdd
+      });
+      this.skillToAdd = '';
+      this.skillLevelToAdd = 'Intermediate';
+    }
+  }
+
+  removeSkill(index: number): void {
+    this.selectedSkills.splice(index, 1);
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  VALIDATION
+  // ═══════════════════════════════════════════════════
+
+  validate(): boolean {
+    this.errors = {};
+
+    if (!this.form.title.trim()) {
+      this.errors['title'] = 'Job title is required';
+    } else if (this.form.title.trim().length < 3) {
+      this.errors['title'] = 'Title must be at least 3 characters';
+    }
+
+    if (!this.form.department_id) {
+      this.errors['department_id'] = 'Please select a department';
+    }
+
+    if (!this.form.description.trim()) {
+      this.errors['description'] = 'Job description is required';
+    } else if (this.form.description.trim().length < 20) {
+      this.errors['description'] = 'Description must be at least 20 characters';
+    }
+
+    if (this.form.experience_min && this.form.experience_max) {
+      if (Number(this.form.experience_min) > Number(this.form.experience_max)) {
+        this.errors['experience'] = 'Min experience cannot be greater than max';
+      }
+    }
+
+    if (this.form.salary_min && this.form.salary_max) {
+      if (Number(this.form.salary_min) > Number(this.form.salary_max)) {
+        this.errors['salary'] = 'Min salary cannot be greater than max salary';
+      }
+    }
+
+    if (!this.form.open_positions || Number(this.form.open_positions) < 1) {
+      this.errors['open_positions'] = 'At least 1 open position required';
+    }
+
+    return Object.keys(this.errors).length === 0;
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  SUBMIT — Create Requisition + Skills + Approval
+  // ═══════════════════════════════════════════════════
+
+  async submitJob(): Promise<void> {
+    if (!this.validate()) {
+      this.showToast('Please fix the validation errors.', 'error');
+      return;
+    }
+
+    this.isSubmitting = true;
+
+    try {
+      // ─── EDIT / RESUBMIT MODE ───
+      if (this.isEditing && this.editingReqId) {
+        await this.resubmitJob();
+        return;
+      }
+
+      // ─── CREATE NEW MODE ───
+      // Step 1: Insert Job Requisition
+      const reqResponse = await this.soap.insertJobRequisition({
+        title: this.form.title.trim(),
+        department_id: this.form.department_id,
+        description: this.form.description.trim(),
+        experience_min: this.form.experience_min || '0',
+        experience_max: this.form.experience_max || '0',
+        salary_min: this.form.salary_min || '0',
+        salary_max: this.form.salary_max || '0',
+        salary_currency: this.form.salary_currency,
+        open_positions: this.form.open_positions,
+        posting_source: this.form.posting_source,
+        created_by_user: this.loggedInUserId,
+      });
+
+      // Extract the generated requisition_id — multiple strategies
+      let reqId = '';
+
+      // Strategy 0: Use the ID we generated in insertJobRequisition
+      if (reqResponse?._generatedReqId) {
+        reqId = reqResponse._generatedReqId;
+      }
+
+      // Strategy 1: $.cordys.json.find
+      if (!reqId) try {
+        const nodes = $.cordys.json.find(reqResponse, 'requisition_id');
+        if (nodes) {
+          const node = Array.isArray(nodes) ? nodes[0] : nodes;
+          reqId = typeof node === 'string' ? node : (node?.text || node?.toString() || '');
+        }
+      } catch (e) {
+        console.warn('[Jobs] Strategy 1 (cordys.json.find) failed:', e);
+      }
+
+      // Strategy 2: Direct property traversal on response object
+      if (!reqId && reqResponse) {
+        try {
+          const tuple = reqResponse?.tuple || reqResponse?.Body?.UpdateTs_job_requisitionsResponse?.tuple;
+          const jobObj = tuple?.['new']?.ts_job_requisitions || tuple?.old?.ts_job_requisitions || {};
+          reqId = jobObj?.requisition_id || '';
+          if (!reqId) {
+            const respStr = JSON.stringify(reqResponse);
+            const match = respStr.match(/"requisition_id"\s*:\s*"([^"]+)"/);
+            if (match) reqId = match[1];
+          }
+        } catch (e) {
+          console.warn('[Jobs] Strategy 2 (traversal) failed:', e);
+        }
+      }
+
+      // Strategy 3: Fallback — query latest requisitions
+      if (!reqId) {
+        try {
+          const allReqs = await this.soap.getJobRequisitions();
+          const match = allReqs.find(r =>
+            r['title'] === this.form.title.trim() &&
+            r['department_id'] === this.form.department_id &&
+            r['created_by_user'] === this.loggedInUserId
+          );
+          if (match) reqId = match['requisition_id'] || '';
+        } catch (e) {
+          console.warn('[Jobs] Strategy 3 (DB lookup) failed:', e);
+        }
+      }
+
+      // Step 2: Insert Job Skills
+      if (reqId) {
+        for (const skill of this.selectedSkills) {
+          try {
+            await this.soap.insertJobSkill(reqId, skill.skill_id, skill.required_level);
+          } catch (e) {
+            console.warn(`[Jobs] Failed to insert skill ${skill.skill_name}:`, e);
+          }
+        }
+
+        // Step 3: Auto-create Approval record
+        try {
+          await this.soap.insertApproval({
+            entity_type: 'REQUISITION',
+            entity_id: reqId,
+            requested_by: this.loggedInUserId,
+            comments: `New requisition: ${this.form.title.trim()}`
+          });
+        } catch (e) {
+          console.warn('[Jobs] Failed to create approval:', e);
+        }
+
+        // Step 4: Trigger BPM and store manager email + task ID
+        await this.triggerBPMForRequisition(reqId);
+
+        this.showToast(`Requisition ${reqId} created and sent for BPM approval!`, 'success');
+      } else {
+        console.warn('[Jobs] Requisition created but ID could not be extracted.');
+        this.showToast('Job requisition created successfully!', 'success');
+      }
+
+      this.closeForm();
+      await this.loadJobs();
+
+    } catch (err) {
+      console.error('Failed to create requisition:', err);
+      this.showToast('Failed to create job requisition. Please try again.', 'error');
+    } finally {
+      this.isSubmitting = false;
+    }
+  }
+
+  /**
+   * Trigger BPM for a requisition: send to manager email from mt_departments.temp1.
+   */
+  private async triggerBPMForRequisition(reqId: string): Promise<void> {
+    try {
+      // 1) First fetch the department id from the form
+      const deptId = this.form.department_id;
+      if (!deptId) {
+        console.warn('[Jobs] No department ID available to fetch manager email.');
+        return;
+      }
+
+      // 2) Look up the department directly to get the manager email from temp1
+      let managerEmail = '';
+      try {
+        const dept = await this.soap.getDepartmentById(deptId);
+        if (dept && dept['temp1']) {
+          managerEmail = dept['temp1'];
+        }
+      } catch (e) {
+        console.warn('[Jobs] Failed to fetch department for manager email:', e);
+      }
+
+      if (!managerEmail) {
+        console.warn('[Jobs] No manager email found in department temp1. BPM trigger skipped.');
+        return;
+      }
+
+      // Trigger BPM
+      const bpmResp = await this.soap.triggerRequisitionBPM(managerEmail, reqId);
+      console.log('[Jobs] BPM triggered, response:', JSON.stringify(bpmResp).substring(0, 300));
+
+      // Extract task ID from BPM response
+      let taskId = '';
+      try {
+        const tid = $.cordys.json.find(bpmResp, 'TaskId');
+        taskId = typeof tid === 'string' ? tid : (Array.isArray(tid) ? tid[0] : '');
+      } catch (e) { /* ignore */ }
+      if (!taskId) {
+        try {
+          const respStr = JSON.stringify(bpmResp);
+          const m = respStr.match(/"TaskId"\s*:\s*"([^"]+)"/i);
+          if (m) taskId = m[1];
+        } catch (e) { /* ignore */ }
+      }
+
+      if (taskId) {
+        // Refetch to get latest data after temp1 update
+        const freshData = await this.soap.getJobRequisitionById(reqId);
+        if (freshData) {
+          await this.soap.updateJobRequisitionTemp(freshData, { temp2: taskId });
+        }
+        console.log(`[Jobs] BPM Task ID stored: ${taskId}`);
+      }
+
+    } catch (err) {
+      console.error('[Jobs] BPM trigger failed (non-blocking):', err);
+      // BPM failure is non-blocking — requisition was already created
+    }
+  }
+
+  /**
+   * Resubmit a rejected job requisition — update the job, re-trigger BPM.
+   */
+  private async resubmitJob(): Promise<void> {
+    try {
+      const oldData = this.editingOldData;
+      const newData: Record<string, string> = {
+        ...oldData,
+        title: this.form.title.trim(),
+        department_id: this.form.department_id,
+        description: this.form.description.trim(),
+        experience_min: this.form.experience_min || '0',
+        experience_max: this.form.experience_max || '0',
+        salary_min: this.form.salary_min || '0',
+        salary_max: this.form.salary_max || '0',
+        salary_currency: this.form.salary_currency,
+        open_positions: this.form.open_positions,
+        posting_source: this.form.posting_source,
+        status: 'PENDING',
+        temp3: '',  // Clear rejection reason
+      };
+
+      // Update the job requisition
+      await this.soap.updateJobRequisition(oldData, newData);
+
+      // Re-create approval record
+      try {
+        await this.soap.insertApproval({
+          entity_type: 'REQUISITION',
+          entity_id: this.editingReqId,
+          requested_by: this.loggedInUserId,
+          comments: `Resubmitted: ${this.form.title.trim()}`
+        });
+      } catch (e) {
+        console.warn('[Jobs] Failed to create re-approval:', e);
+      }
+
+      // Re-trigger BPM
+      await this.triggerBPMForRequisition(this.editingReqId);
+
+      this.showToast(`Requisition ${this.editingReqId} resubmitted for approval!`, 'success');
+      this.closeForm();
+      await this.loadJobs();
+
+    } catch (err) {
+      console.error('Failed to resubmit:', err);
+      this.showToast('Failed to resubmit requisition.', 'error');
+    } finally {
+      this.isSubmitting = false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  VIEW DETAILS
+  // ═══════════════════════════════════════════════════
+
+  async viewDetails(job: JobRequisition): Promise<void> {
+    this.selectedJob = job;
+    this.selectedJobSkills = [];
+    this.showDetailModal = true;
+
+    try {
+      const skills = await this.soap.getJobSkillsByRequisition(job.requisition_id);
+      this.selectedJobSkills = skills.map(s => ({
+        skill_id: s['skill_id'] || '',
+        skill_name: this.allSkills.find(sk => sk.skill_id === s['skill_id'])?.skill_name || s['skill_id'],
+        required_level: s['required_level'] || ''
+      }));
+    } catch (err) {
+      console.error('Failed to load job skills:', err);
+    }
+  }
+
+  closeDetailModal(): void {
+    this.showDetailModal = false;
+    this.selectedJob = null;
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  FILTERING
+  // ═══════════════════════════════════════════════════
+
+  get filteredJobs(): JobRequisition[] {
+    return this.jobs.filter(j => {
+      const matchesSearch = !this.searchTerm ||
+        j.title.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        j.requisition_id.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+        (j.department_name || '').toLowerCase().includes(this.searchTerm.toLowerCase());
+
+      const matchesStatus = this.statusFilter === 'ALL' || j.status === this.statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }
+
+  // ═══════════════════════════════════════════════════
+  //  HELPERS
+  // ═══════════════════════════════════════════════════
+
+  getStatusClass(status: string): string {
+    switch (status) {
+      case 'APPROVED': return 'badge-success';
+      case 'PENDING': return 'badge-warning';
+      case 'CLOSED': return 'badge-danger';
+      case 'REJECTED': return 'badge-rejected';
+      default: return 'badge-muted';
+    }
+  }
+
+  getStatusLabel(status: string): string {
+    switch (status) {
+      case 'APPROVED': return 'Approved';
+      case 'PENDING': return 'Pending Approval';
+      case 'CLOSED': return 'Closed';
+      case 'REJECTED': return 'Rejected';
+      default: return status;
+    }
+  }
+
+  formatDate(dateStr: string): string {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  getDeptName(deptId: string): string {
+    const dept = this.departments.find(d => d.department_id === deptId);
+    return dept ? dept.department_name : deptId;
+  }
+
+  // ─── Toast ──────────────────────────────────────
+  showToast(message: string, type: 'success' | 'error'): void {
+    this.toastMessage = message;
+    this.toastType = type;
+    this.showToastFlag = true;
+    if (this.toastTimeout) clearTimeout(this.toastTimeout);
+    this.toastTimeout = setTimeout(() => this.showToastFlag = false, 4000);
+  }
 }

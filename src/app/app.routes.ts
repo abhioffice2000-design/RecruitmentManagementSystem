@@ -3,8 +3,13 @@ import { Routes } from '@angular/router';
 export const routes: Routes = [
   {
     path: '',
-    redirectTo: 'login',
+    redirectTo: 'home',
     pathMatch: 'full',
+  },
+  {
+    path: 'home',
+    loadComponent: () =>
+      import('./home/home.component').then((m) => m.HomeComponent),
   },
   {
     path: 'login',
@@ -62,6 +67,29 @@ export const routes: Routes = [
     path: 'candidate',
     loadComponent: () =>
       import('./candidate-portal/candidate-portal').then((m) => m.CandidatePortal),
+    children: [
+      { path: '', redirectTo: 'jobs', pathMatch: 'full' },
+      {
+        path: 'dashboard',
+        loadComponent: () =>
+          import('./candidate-portal/pages/candidate-dashboard/candidate-dashboard.component').then(m => m.CandidateDashboardComponent),
+      },
+      {
+        path: 'jobs',
+        loadComponent: () =>
+          import('./candidate-portal/pages/candidate-job-search/candidate-job-search.component').then(m => m.CandidateJobSearchComponent),
+      },
+      {
+        path: 'jobs/:id/apply',
+        loadComponent: () =>
+          import('./candidate-portal/pages/candidate-apply-job/candidate-apply-job.component').then(m => m.CandidateApplyJobComponent),
+      },
+      {
+        path: 'applications',
+        loadComponent: () =>
+          import('./candidate-portal/pages/candidate-applications/candidate-applications.component').then(m => m.CandidateApplicationsComponent),
+      },
+    ]
   },
   {
     path: 'hr',
@@ -74,6 +102,8 @@ export const routes: Routes = [
       { path: 'calendar', loadComponent: () => import('./hr-dashboard/calendar/calendar').then(m => m.CalendarTab) },
       { path: 'jobs', loadComponent: () => import('./hr-dashboard/jobs/jobs').then(m => m.JobsTab) },
       { path: 'candidates', loadComponent: () => import('./hr-dashboard/candidates/candidates').then(m => m.CandidatesTab) },
+      { path: 'pipeline', loadComponent: () => import('./hr-dashboard/pipeline-board/pipeline-board').then(m => m.PipelineBoardComponent) },
+      { path: 'offers', loadComponent: () => import('./hr-dashboard/offers/offers').then(m => m.OffersTab) },
       { path: 'referrals', loadComponent: () => import('./hr-dashboard/referrals/referrals').then(m => m.ReferralsTab) },
       { path: 'report', loadComponent: () => import('./hr-dashboard/report/report').then(m => m.ReportTab) },
       { path: 'settings', loadComponent: () => import('./hr-dashboard/settings/settings').then(m => m.SettingsTab) },
@@ -113,6 +143,11 @@ export const routes: Routes = [
         path: 'interviews',
         loadComponent: () =>
           import('./manager-dashboard/manager-interviews/manager-interviews').then((m) => m.ManagerInterviews),
+      },
+      {
+        path: 'delegates',
+        loadComponent: () =>
+          import('./manager-dashboard/manager-delegates/manager-delegates').then((m) => m.ManagerDelegates),
       }
     ]
   },

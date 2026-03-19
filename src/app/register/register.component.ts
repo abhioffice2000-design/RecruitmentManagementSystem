@@ -1,4 +1,4 @@
-import { Component, NgZone } from '@angular/core';
+import { Component, NgZone, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -11,7 +11,7 @@ declare var $: any;
   templateUrl: './register.component.html',
   styleUrls: ['./register.component.scss'],
 })
-export class RegisterComponent {
+export class RegisterComponent implements OnInit {
   data = {
     firstName: '',
     lastName: '',
@@ -39,6 +39,19 @@ export class RegisterComponent {
     private router: Router,
     private ngZone: NgZone,
   ) {}
+
+  ngOnInit(): void {
+    // Authenticate SSO in the background so web services don't fail with anonymous access
+    if ($ && $.cordys && $.cordys.authentication && $.cordys.authentication.sso) {
+      $.cordys.authentication.sso.authenticate('bhavya.pradhan', 'app@works01')
+        .done(() => {
+          console.log('Background SSO authentication successful (register)');
+        })
+        .fail((err: any) => {
+          console.warn('Background SSO authentication failed:', err);
+        });
+    }
+  }
 
   // ─── Toast Helpers ────────────────────────────────────────
   showToast(message: string, type: 'success' | 'error' = 'error') {

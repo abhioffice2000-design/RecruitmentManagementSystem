@@ -1,13 +1,13 @@
 <div class="header-container">
   
-  <div class="search-wrap">
+  <div class="search-wrap" *ngIf="showSearch">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
     </svg>
     <input type="text" placeholder="Search candidates, jobs..." class="search-input" />
   </div>
 
-  <div class="header-actions">
+  <div class="header-actions" *ngIf="showUser">
     
     <button class="btn-icon header-btn">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">

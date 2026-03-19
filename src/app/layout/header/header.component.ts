@@ -1,13 +1,16 @@
-import { Component } from '@angular/core';
+import { Component, Input } from '@angular/core';
+import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [],
+  imports: [CommonModule],
   templateUrl: './header.component.html',
   styleUrls: ['./header.component.css']
 })
 export class HeaderComponent {
+  @Input() showSearch: boolean = true;
+  @Input() showUser: boolean = true;
   user = {
     name: 'Admin User',
     role: 'Super Admin',

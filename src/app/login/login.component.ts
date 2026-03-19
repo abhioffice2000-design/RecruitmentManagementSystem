@@ -28,8 +28,9 @@ export class LoginComponent implements OnInit {
   // Show/hide password
   showPassword = false;
   isLoading = false;
+  private loginSucceeded = false;
 
-  constructor(private router: Router, private ngZone: NgZone) {}
+  constructor(private router: Router, private ngZone: NgZone) { }
 
   ngOnInit(): void {
     // Override Cordys SDK's default login error handler to use our toast
@@ -125,6 +126,7 @@ export class LoginComponent implements OnInit {
     authPromise
       .done(function () {
         console.log('Login success, fetching role...');
+        self.loginSucceeded = true;
         self.ngZone.run(() => {
           self.fetchRole(self.data.user);
         });
@@ -137,6 +139,7 @@ export class LoginComponent implements OnInit {
 
     // Fallback timeout in case neither callback fires
     setTimeout(() => {
+      if (self.loginSucceeded) return; // Auth already succeeded, skip fallback
       if (
         window.location.pathname === '/' ||
         window.location.pathname === '/login'
@@ -200,35 +203,173 @@ export class LoginComponent implements OnInit {
   // ─── Role-Based Redirect ─────────────────────────────────
   redirectUser(roles: string[], username: string) {
     sessionStorage.setItem('loggedInUser', username);
+    const self = this;
 
-    const roleRouteMap: { role: string; route: string; label: string }[] = [
-      { role: 'ADMIN_RMST1', route: '/admin', label: 'Admin Dashboard' },
-      { role: 'CANDIDATE_RMST1', route: '/candidate', label: 'Candidate Portal' },
-      { role: 'HR_RMST1', route: '/hr', label: 'HR Dashboard' },
-      { role: 'INTERVIEWER_RMST1', route: '/interviewer', label: 'Interviewer Portal' },
-      { role: 'MANAGER_RMST1', route: '/manager', label: 'Manager Dashboard' },
-    ];
+    // Fetch the user details by email to determine true account_type
+    $.cordys.ajax({
+      method: 'Getuserdetailsbymail',
+      namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      dataType: '* json',
+      parameters: { emailid: username }
+    })
+      .done((resp: any) => {
+        self.ngZone.run(() => {
+          let accountType = '';
+          try {
+            const tuples = $.cordys.json.find(resp, 'tuple');
+            if (tuples) {
+              const tuple = Array.isArray(tuples) ? tuples[0] : tuples;
+              const account = tuple?.old?.ts_accounts || tuple?.ts_accounts || tuple?.old || tuple;
+              accountType = typeof account?.account_type === 'string' ? account.account_type.toLowerCase() : (account?.account_type?.text?.toLowerCase() || '');
 
-    for (const entry of roleRouteMap) {
-      if (roles.includes(entry.role)) {
-        this.showToast(
-          `Login successful. Redirecting to ${entry.label}...`,
-          'success'
-        );
-        setTimeout(() => {
-          this.router.navigate([entry.route]).then((success) => {
-            console.log(
-              `Navigation to ${entry.route}:`,
-              success ? 'successful' : 'failed'
-            );
-          });
-        }, 800);
-        return;
-      }
-    }
+              // Store Candidate ID
+              const candidateIdStr = account?.candidate_id;
+              const candidateId = (candidateIdStr && typeof candidateIdStr === 'object' && candidateIdStr['@null'] === 'true') ? '' : (candidateIdStr || '');
+              if (candidateId) {
+                const finalCid = typeof candidateId === 'string' ? candidateId : candidateId.text || '';
+                sessionStorage.setItem('loggedInCandidateId', finalCid);
+                console.log('[Login] Stored loggedInCandidateId:', finalCid);
+              }
 
-    // No recognized role
-    this.isLoading = false;
-    this.showToast('Unauthorized user — no valid role assigned.', 'error');
+              // Store User ID and Department
+              const userIdStr = account?.user_id;
+              const userId = (userIdStr && typeof userIdStr === 'object' && userIdStr['@null'] === 'true') ? '' : (userIdStr || '');
+              if (userId) {
+                const validUserId = typeof userId === 'string' ? userId : userId.text || '';
+                sessionStorage.setItem('loggedInUserId', validUserId);
+                self.fetchAndStoreDepartmentId(validUserId);
+              }
+            }
+          } catch (e) { console.warn('Error parsing user details in redirectUser:', e); }
+
+          // 1. Force candidate portal if account_type is candidate
+          if (accountType === 'candidate') {
+            self.doRedirect('/candidate', 'Candidate Portal');
+            return;
+          }
+
+          // 2. Fallback to Cordys roles if not a candidate account
+          const roleRouteMap: { role: string; route: string; label: string }[] = [
+            { role: 'ADMIN_RMST1', route: '/admin', label: 'Admin Dashboard' },
+            { role: 'HR_RMST1', route: '/hr', label: 'HR Dashboard' },
+            { role: 'INTERVIEWER_RMST1', route: '/interviewer', label: 'Interviewer Portal' },
+            { role: 'MANAGER_RMST1', route: '/manager', label: 'Manager Dashboard' },
+            { role: 'CANDIDATE_RMST1', route: '/candidate', label: 'Candidate Portal' },
+          ];
+
+          for (const entry of roleRouteMap) {
+            if (roles.includes(entry.role)) {
+              self.doRedirect(entry.route, entry.label);
+              return;
+            }
+          }
+
+          self.isLoading = false;
+          self.showToast('Unauthorized user — no valid role assigned.', 'error');
+        });
+      })
+      .fail(() => {
+        self.ngZone.run(() => {
+          self.isLoading = false;
+          self.showToast('Failed to verify user account details.', 'error');
+        });
+      });
+  }
+
+  private doRedirect(route: string, label: string) {
+    this.showToast(`Login successful. Redirecting to ${label}...`, 'success');
+    setTimeout(() => {
+      this.router.navigate([route]).then(success => {
+        console.log(`Navigation to ${route}:`, success ? 'successful' : 'failed');
+      });
+    }, 800);
+  }
+
+
+  // ─── Fetch user details by email ────────────────
+  private fetchAndStoreUserId(email: string) {
+    const self = this;
+    $.cordys.ajax({
+      method: 'Getuserdetailsbymail',
+      namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      dataType: '* json',
+      parameters: { emailid: email }
+    })
+      .done(function (resp: any) {
+        try {
+          const tuples = $.cordys.json.find(resp, 'tuple');
+          if (tuples) {
+            const tuple = Array.isArray(tuples) ? tuples[0] : tuples;
+            const account = tuple?.old?.ts_accounts || tuple?.ts_accounts || tuple?.old || tuple;
+
+            const userIdStr = account?.user_id;
+            // check if null object from Cordys XML-to-JSON
+            const userId = (userIdStr && typeof userIdStr === 'object' && userIdStr['@null'] === 'true') ? '' : (userIdStr || '');
+
+            const candidateIdStr = account?.candidate_id;
+            const candidateId = (candidateIdStr && typeof candidateIdStr === 'object' && candidateIdStr['@null'] === 'true') ? '' : (candidateIdStr || '');
+
+            let validUserId = '';
+            if (userId) {
+              validUserId = typeof userId === 'string' ? userId : userId.text || '';
+              sessionStorage.setItem('loggedInUserId', validUserId);
+              console.log('[Login] Stored loggedInUserId:', sessionStorage.getItem('loggedInUserId'));
+
+              // Fetch department_id from ts_users since it's a valid employee user
+              self.fetchAndStoreDepartmentId(validUserId);
+            } else {
+              console.warn('[Login] user_id is null/empty for this account.');
+            }
+
+            if (candidateId) {
+              sessionStorage.setItem('loggedInCandidateId', typeof candidateId === 'string' ? candidateId : candidateId.text || '');
+              console.log('[Login] Stored loggedInCandidateId:', sessionStorage.getItem('loggedInCandidateId'));
+            }
+
+            // Store raw email as well, just in case
+            sessionStorage.setItem('loggedInUserEmail', email);
+
+          } else {
+            console.warn('[Login] No tuples found for email:', email);
+          }
+        } catch (e) {
+          console.warn('[Login] Error parsing user lookup response:', e);
+        }
+      })
+      .fail(function () {
+        console.warn('[Login] Failed to fetch user details by email');
+      });
+  }
+
+  // ─── Fetch department_id from ts_users ────────────────
+  private fetchAndStoreDepartmentId(userId: string) {
+    $.cordys.ajax({
+      method: 'GetTs_usersObject',
+      namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      dataType: '* json',
+      parameters: { User_id: userId }
+    })
+      .done(function (resp: any) {
+        try {
+          const tuples = $.cordys.json.find(resp, 'tuple');
+          if (tuples) {
+            const tuple = Array.isArray(tuples) ? tuples[0] : tuples;
+            const user = tuple?.old?.ts_users || tuple?.ts_users || tuple?.old || tuple;
+            const deptId = user?.department_id || '';
+            if (deptId) {
+              const finalDeptId = typeof deptId === 'string' ? deptId : deptId.text || '';
+              if (finalDeptId && (!finalDeptId['@null'])) {
+                sessionStorage.setItem('loggedInUserDepartmentId', finalDeptId);
+                console.log('[Login] Stored loggedInUserDepartmentId:', finalDeptId);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[Login] Error parsing ts_users to get department:', e);
+        }
+      })
+      .fail(function (e: any) {
+        console.warn('[Login] Failed to fetch user department details', e);
+      });
   }
 }
