@@ -11,7 +11,7 @@ import { HeroService } from '../../hero.service';
     <div class="dashboard-content">
       <div class="header">
         <h2>Dashboard</h2>
-        <div class="user-info">
+        <!-- <div class="user-info">
           <span class="icon">🔔</span>
           <span class="icon">📅</span>
           <div class="profile">
@@ -21,14 +21,14 @@ import { HeroService } from '../../hero.service';
             </div>
             <img src="https://via.placeholder.com/40" alt="profile">
           </div>
-        </div>
+        </div> -->
       </div>
       
       <div class="controls">
-        <div class="date-range">&lt; Mar 1, 2023 - Mar 7, 2023 &gt;</div>
+      <!--  <div class="date-range">&lt; Mar 1, 2023 - Mar 7, 2023 &gt;</div>
         <select class="interval">
           <option>Weekly</option>
-        </select>
+        </select>-->
         <button class="export-btn"><span>📥</span> Export Report</button>
       </div>
 
@@ -37,28 +37,28 @@ import { HeroService } from '../../hero.service';
           <div class="label">Total Candidates Applied</div>
           <div class="value-row">
             <span class="value">{{ totalCandidatesApplied }}</span>
-            <span class="badge green">↗ 12%</span>
+           <!-- <span class="badge green">↗ 12%</span> -->
           </div>
         </div>
         <div class="card">
           <div class="label">Total Candidates Selected</div>
           <div class="value-row">
             <span class="value">{{ totalCandidatesSelected }}</span>
-            <span class="badge green">↗ 15%</span>
+           <!--  <span class="badge green">↗ 15%</span> -->
           </div>
         </div>
         <div class="card">
-          <div class="label">Recent Hires</div>
+          <div class="label">Recent Candidates Hired</div>
           <div class="value-row">
-            <span class="value">42</span>
-            <span class="badge green">↗ 5%</span>
+             <span class="value">{{ recentlyHiredCandidates }}</span>
+            <!--  <span class="badge green">↗ 5%</span> -->
           </div>
         </div>
         <div class="card">
           <div class="label">Currently Inprogress Candidates</div>
           <div class="value-row">
             <span class="value">{{ totalInProgressCandidates }}</span>
-            <span class="badge green">↗ 12%</span>
+           <!--  <span class="badge green">↗ 12%</span> -->
           </div>
         </div>
       </div>
@@ -296,7 +296,7 @@ export class DashboardTab implements OnInit {
   totalCandidatesApplied: string | number = 'Loading...';
   totalCandidatesSelected: string | number = 'Loading...';
   totalInProgressCandidates: string | number = 'Loading...';
-
+  recentlyHiredCandidates: string | number = 'Loading...';
   constructor(private hs: HeroService) { }
 
   ngOnInit() {
@@ -304,6 +304,8 @@ export class DashboardTab implements OnInit {
     this.fetchTotalApplied();
     this.fetchTotalCandidatesSelected();
     this.fetchCurrentlyInProgressCandidates();
+    this.fetchRecentlyHiredCandidates();
+    this.fetchMonthlyStats(this.selectedYear);
     debugger;
   }
 
@@ -366,38 +368,70 @@ export class DashboardTab implements OnInit {
     });
   }
 
+  fetchRecentlyHiredCandidates() {
+    this.hs.ajax(
+      'GetRecentHiresCount',
+      'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      {}
+    ).then((resp: any) => {
+      console.log('Total Selected RPC Response:', resp);
+      try {
+        // Defaulting to the same parsing structure as fetchTotalApplied
+        this.recentlyHiredCandidates = resp.tuple.old.ts_offers.count;
+      } catch (e) {
+        console.error('Error parsing response from GetTotalCandidatesSelectedCount:', e);
+        this.recentlyHiredCandidates = 'Error';
+      }
+    }).catch((err: any) => {
+      console.error('Error in GetTotalCandidatesSelectedCount AJAX call:', err);
+      this.recentlyHiredCandidates = 'Error';
+    });
+  }
   selectedYear = new Date().getFullYear();
   availableYears = [2022, 2023, 2024, 2025, 2026];
 
-  // Using a map to simulate different data per year
-  yearlyData: Record<number, Array<{ month: string, applied: number, selected: number }>> = {
-    2026: [
-      { month: 'Jan', applied: 320, selected: 85 },
-      { month: 'Feb', applied: 350, selected: 105 },
-      { month: 'Mar', applied: 480, selected: 170 },
-      { month: 'Apr', applied: 540, selected: 210 },
-      { month: 'May', applied: 410, selected: 120 },
-      { month: 'Jun', applied: 620, selected: 280 },
-      { month: 'Jul', applied: 590, selected: 195 },
-      { month: 'Aug', applied: 710, selected: 250 }
-    ],
-    2025: [
-      { month: 'Jan', applied: 290, selected: 70 },
-      { month: 'Feb', applied: 310, selected: 90 },
-      { month: 'Mar', applied: 420, selected: 140 },
-      { month: 'Apr', applied: 480, selected: 180 },
-      { month: 'May', applied: 390, selected: 110 },
-      { month: 'Jun', applied: 550, selected: 240 },
-      { month: 'Jul', applied: 520, selected: 175 },
-      { month: 'Aug', applied: 650, selected: 220 },
-      { month: 'Sep', applied: 600, selected: 200 },
-      { month: 'Oct', applied: 580, selected: 185 },
-      { month: 'Nov', applied: 490, selected: 150 },
-      { month: 'Dec', applied: 380, selected: 95 }
-    ]
-  };
+  // Cache for monthly stats per year (optional)
+  monthlyStats: Record<number, Array<{ month: string, applied: number, selected: number }>> = {};
 
-  chartData = this.yearlyData[this.selectedYear] || this.yearlyData[2026];
+  // Fetch monthly statistics for a given year from the SOAP service
+  fetchMonthlyStats(year: number) {
+    this.hs.ajax(
+      'GetMonthlyStatsByYear',
+      'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      { year }
+    ).then((resp: any) => {
+      try {
+        // Normalize the tuple(s) to an array – the SOAP response may return a single object or an array
+        const rawTuples = resp.tuple;
+        const tuples = rawTuples ? (Array.isArray(rawTuples) ? rawTuples : [rawTuples]) : [];
+        console.log('Fetched tuples:', tuples);
+        const data = tuples.map((t: any) => {
+          // The TABLE element may itself be an array; grab the first one if so
+          const table = Array.isArray(t.old?.TABLE) ? t.old.TABLE[0] : t.old?.TABLE;
+          // if (!table) return null;
+          // Convert month ISO string to a short month name (e.g., "Mar")
+          const monthDate = new Date(table.month);
+          const month = monthDate.toLocaleString('default', { month: 'short' });
+          return {
+            month,
+            applied: Number(table.applied_count),
+            selected: Number(table.selected_count)
+          };
+        }).filter(Boolean);
+        this.chartData = data;
+        // cache if needed
+        this.monthlyStats[year] = data;
+      } catch (e) {
+        console.error('Error parsing monthly stats response:', e);
+        this.chartData = [];
+      }
+    }).catch((err: any) => {
+      console.error('Error fetching monthly stats:', err);
+      this.chartData = [];
+    });
+  }
+
+  chartData: Array<{ month: string, applied: number, selected: number }> = [];
 
   get maxChartValue() {
     // Add 15% padding to the top of the chart so the highest bar isn't hitting the roof
@@ -406,8 +440,8 @@ export class DashboardTab implements OnInit {
   }
 
   onYearChange() {
-    // Fallback to 2026 data if the selected year doesn't have specific data
-    this.chartData = this.yearlyData[this.selectedYear] || this.yearlyData[2026];
+    // Load data for the newly selected year
+    this.fetchMonthlyStats(this.selectedYear);
   }
 
   // --- Pie Chart Sector Data & Logic ---
