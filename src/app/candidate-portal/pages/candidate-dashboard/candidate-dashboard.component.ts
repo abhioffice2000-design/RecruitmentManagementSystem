@@ -143,12 +143,16 @@ export class CandidateDashboardComponent implements OnInit {
   constructor(private soap: SoapService, public router: Router) {}
 
   async ngOnInit(): Promise<void> {
+    const candidateId = sessionStorage.getItem('loggedInCandidateId') || '';
     try {
-      const [jobs, apps, stages] = await Promise.all([
+      // Load jobs and stages in parallel; then get ONLY this candidate's applications
+      const [jobs, stages] = await Promise.all([
         this.soap.getJobRequisitions(),
-        this.soap.getApplications(),
         this.soap.getPipelineStages()
       ]);
+      const apps = candidateId
+        ? await this.soap.getApplicationsByCandidate(candidateId)
+        : [];
 
       this.openJobs = jobs.filter(j => (j['status'] || '').toUpperCase() === 'APPROVED').length;
 

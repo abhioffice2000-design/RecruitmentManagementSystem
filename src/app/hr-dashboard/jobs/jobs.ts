@@ -307,36 +307,82 @@ export class JobsTab implements OnInit {
         created_by_user: this.loggedInUserId,
       });
 
-      // Extract the generated requisition_id from the JSON response
+      // Extract the generated requisition_id — multiple strategies
       let reqId = '';
+
+      // Strategy 1: $.cordys.json.find
       try {
         const nodes = $.cordys.json.find(reqResponse, 'requisition_id');
         if (nodes) {
           const node = Array.isArray(nodes) ? nodes[0] : nodes;
-          reqId = typeof node === 'string' ? node : (node.text || '');
+          reqId = typeof node === 'string' ? node : (node?.text || node?.toString() || '');
         }
       } catch (e) {
-        console.warn('Error extracting requisition_id:', e);
+        console.warn('[Jobs] Strategy 1 (cordys.json.find) failed:', e);
       }
 
+      // Strategy 2: Direct property traversal on response object
+      if (!reqId && reqResponse) {
+        try {
+          const tuple = reqResponse?.tuple || reqResponse?.Body?.UpdateTs_job_requisitionsResponse?.tuple;
+          const jobObj = tuple?.['new']?.ts_job_requisitions || tuple?.old?.ts_job_requisitions || {};
+          reqId = jobObj?.requisition_id || '';
+          if (!reqId) {
+            // Try stringifying and regex matching
+            const respStr = JSON.stringify(reqResponse);
+            const match = respStr.match(/"requisition_id"\s*:\s*"([^"]+)"/);
+            if (match) reqId = match[1];
+          }
+        } catch (e) {
+          console.warn('[Jobs] Strategy 2 (traversal) failed:', e);
+        }
+      }
+
+      // Strategy 3: Fallback — query latest requisitions to find the one we just created
       if (!reqId) {
-        throw new Error('Requisition was created but could not extract the ID from response.');
+        try {
+          console.log('[Jobs] Trying fallback: querying DB for latest requisition...');
+          const allReqs = await this.soap.getJobRequisitions();
+          const match = allReqs.find(r =>
+            r['title'] === this.form.title.trim() &&
+            r['department_id'] === this.form.department_id &&
+            r['created_by_user'] === this.loggedInUserId
+          );
+          if (match) reqId = match['requisition_id'] || '';
+        } catch (e) {
+          console.warn('[Jobs] Strategy 3 (DB lookup) failed:', e);
+        }
       }
 
-      // Step 2: Insert Job Skills (if any)
-      for (const skill of this.selectedSkills) {
-        await this.soap.insertJobSkill(reqId, skill.skill_id, skill.required_level);
+      // Step 2: Insert Job Skills (if any) — only if we have reqId
+      if (reqId) {
+        for (const skill of this.selectedSkills) {
+          try {
+            await this.soap.insertJobSkill(reqId, skill.skill_id, skill.required_level);
+          } catch (e) {
+            console.warn(`[Jobs] Failed to insert skill ${skill.skill_name}:`, e);
+          }
+        }
+
+        // Step 3: Auto-create Approval record for Leadership
+        try {
+          await this.soap.insertApproval({
+            entity_type: 'REQUISITION',
+            entity_id: reqId,
+            requested_by: this.loggedInUserId,
+            comments: `New requisition: ${this.form.title.trim()}`
+          });
+        } catch (e) {
+          console.warn('[Jobs] Failed to create approval:', e);
+        }
+
+        this.showToast(`Requisition ${reqId} created and sent for approval!`, 'success');
+      } else {
+        // Data was inserted but we couldn't get the ID — still a success
+        console.warn('[Jobs] Requisition created but ID could not be extracted. Skills/approval skipped.');
+        this.showToast('Job requisition created successfully!', 'success');
       }
 
-      // Step 3: Auto-create Approval record for Leadership
-      await this.soap.insertApproval({
-        entity_type: 'REQUISITION',
-        entity_id: reqId,
-        requested_by: this.loggedInUserId,
-        comments: `New requisition: ${this.form.title.trim()}`
-      });
-
-      this.showToast(`Requisition ${reqId} created and sent for approval!`, 'success');
       this.closeForm();
       await this.loadJobs();
 

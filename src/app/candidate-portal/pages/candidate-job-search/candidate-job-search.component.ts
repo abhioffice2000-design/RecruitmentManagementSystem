@@ -19,6 +19,7 @@ interface JobCard {
   posting_source: string;
   created_at: string;
   skills: { skill_name: string; required_level: string }[];
+  hasApplied: boolean;
 }
 
 @Component({
@@ -39,6 +40,9 @@ export class CandidateJobSearchComponent implements OnInit {
   departmentFilter = '';
   experienceFilter = '';
 
+  // Track applied jobs for duplicate prevention
+  private appliedRequisitionIds = new Set<string>();
+
   constructor(private soap: SoapService, private router: Router) {}
 
   ngOnInit(): void {
@@ -48,12 +52,18 @@ export class CandidateJobSearchComponent implements OnInit {
   async loadJobs(): Promise<void> {
     this.isLoading = true;
     try {
-      // Load departments map + skills map in parallel with jobs
-      const [jobsRaw, deptsRaw, skillsRaw] = await Promise.all([
+      // Load departments map + skills map + candidate's existing applications in parallel
+      const candidateId = sessionStorage.getItem('loggedInCandidateId') || '';
+      const [jobsRaw, deptsRaw, skillsRaw, candidateApps] = await Promise.all([
         this.soap.getJobRequisitions(),
         this.soap.getDepartments(),
-        this.soap.getSkills()
+        this.soap.getSkills(),
+        candidateId ? this.soap.getApplicationsByCandidate(candidateId) : Promise.resolve([])
       ]);
+
+      // Build set of requisition IDs the candidate has already applied to
+      this.appliedRequisitionIds.clear();
+      candidateApps.forEach(a => this.appliedRequisitionIds.add(a['requisition_id'] || ''));
 
       const deptMap = new Map<string, string>();
       deptsRaw.forEach(d => {
@@ -67,8 +77,11 @@ export class CandidateJobSearchComponent implements OnInit {
       const skillMap = new Map<string, string>();
       skillsRaw.forEach(s => skillMap.set(s['skill_id'] || '', s['skill_name'] || ''));
 
-      // Only show APPROVED jobs to candidates
-      const approvedJobs = jobsRaw.filter(j => (j['status'] || '').toUpperCase() === 'APPROVED');
+      // Show jobs that are APPROVED, OPEN, or PENDING (not CLOSED/REJECTED)
+      const approvedJobs = jobsRaw.filter(j => {
+        const s = (j['status'] || '').toUpperCase();
+        return s === 'APPROVED' || s === 'OPEN' || s === 'PENDING';
+      });
 
       // Enrich with department names and load skills for each
       this.allJobs = [];
@@ -97,7 +110,8 @@ export class CandidateJobSearchComponent implements OnInit {
           open_positions: j['open_positions'] || '1',
           posting_source: j['posting_source'] || '',
           created_at: j['created_at'] || '',
-          skills
+          skills,
+          hasApplied: this.appliedRequisitionIds.has(reqId)
         });
       }
 
@@ -146,6 +160,10 @@ export class CandidateJobSearchComponent implements OnInit {
 
   applyToJob(jobId: string): void {
     this.router.navigate(['/candidate/jobs', jobId, 'apply']);
+  }
+
+  viewApplications(): void {
+    this.router.navigate(['/candidate/applications']);
   }
 
   getTimeAgo(dateStr: string): string {

@@ -82,7 +82,10 @@
       </div>
 
       <div class="card-actions">
-        <button class="btn-apply" (click)="applyToJob(job.requisition_id)">
+        <button class="btn-applied" *ngIf="job.hasApplied" (click)="viewApplications()">
+          <i class="fas fa-check-circle"></i> Already Applied · Check Status
+        </button>
+        <button class="btn-apply" *ngIf="!job.hasApplied" (click)="applyToJob(job.requisition_id)">
           Apply Now →
         </button>
       </div>

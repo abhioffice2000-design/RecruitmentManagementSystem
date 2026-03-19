@@ -1,8 +1,50 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SoapService } from '../../../services/soap.service';
+import { AiResumeService } from '../../../services/ai-resume.service';
+
+declare var $: any;
+
+// ─── Interfaces for dynamic form arrays ────────────────────
+interface EducationEntry {
+  degree: string;
+  field_of_study: string;
+  institution: string;
+  start_year: string;
+  end_year: string;
+  grade: string;
+}
+
+interface ExperienceEntry {
+  company: string;
+  role: string;
+  start_date: string;
+  end_date: string;
+  description: string;
+  is_current: boolean;
+}
+
+interface InternshipEntry {
+  company: string;
+  role: string;
+  duration: string;
+  description: string;
+}
+
+interface ProjectEntry {
+  title: string;
+  description: string;
+  technologies: string;
+  url: string;
+}
+
+interface CertificationEntry {
+  name: string;
+  issuing_org: string;
+  year: string;
+}
 
 @Component({
   selector: 'app-candidate-apply-job',
@@ -20,8 +62,10 @@ export class CandidateApplyJobComponent implements OnInit {
   isLoading = true;
   isSubmitting = false;
   submitted = false;
+  alreadyApplied = false;
+  existingApplicationId = '';
 
-  // ─── Form Fields ──────────────────────────────
+  // ─── Form Fields (Scalar) ──────────────────────────────────
   form = {
     first_name: '',
     last_name: '',
@@ -31,42 +75,64 @@ export class CandidateApplyJobComponent implements OnInit {
     experience_years: '',
     location: '',
     cover_letter: '',
+    summary: '',
+    current_salary: '',
     expected_salary: '',
     notice_period: '',
+    highest_qualification: '',
+    portfolio_url: '',
+    github_url: '',
+    willing_to_relocate: false,
+    available_joining_date: '',
     source: 'Career Portal'
   };
 
-  // ─── Skills Selection ─────────────────────────
+  // ─── Dynamic Arrays ────────────────────────────────────────
+  educations: EducationEntry[] = [];
+  experiences: ExperienceEntry[] = [];
+  internships: InternshipEntry[] = [];
+  projects: ProjectEntry[] = [];
+  certifications: CertificationEntry[] = [];
+
+  // ─── Skills Selection ─────────────────────────────────────
   allSkills: { skill_id: string; skill_name: string }[] = [];
   selectedSkills: { skill_id: string; skill_name: string; experience_years: string }[] = [];
   skillToAdd = '';
   skillExpToAdd = '1';
 
-  // ─── Resume Drag & Drop ───────────────────────
+  // ─── Resume / AI Parsing ──────────────────────────────────
   resumeFile: File | null = null;
   resumeFileName = '';
   isDragOver = false;
+  isParsing = false;
+  parseSuccess = false;
+  parseError = '';
 
-  // ─── Pipeline Stages ──────────────────────────
+  // ─── Pipeline Stages ──────────────────────────────────────
   firstStageId = '';
 
-  // ─── Errors ───────────────────────────────────
+  // ─── Errors ───────────────────────────────────────────────
   errors: Record<string, string> = {};
 
-  // ─── Toast ────────────────────────────────────
+  // ─── Collapsible Sections ─────────────────────────────────
+  collapsedSections: Record<string, boolean> = {};
+
+  // ─── Toast ────────────────────────────────────────────────
   toastMessage = '';
   toastType: 'success' | 'error' = 'success';
   showToastFlag = false;
   private toastTimeout: any;
 
-  getRequiredSkillsText(): string {
+  get requiredSkillsText(): string {
     return this.jobSkills.map(s => s.skill_name).join(', ');
   }
 
   constructor(
     private soap: SoapService,
+    private aiResume: AiResumeService,
     private route: ActivatedRoute,
-    private router: Router
+    public router: Router,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -75,67 +141,173 @@ export class CandidateApplyJobComponent implements OnInit {
       this.router.navigate(['/candidate/jobs']);
       return;
     }
+    // Start with one blank education & experience entry
+    this.addEducation();
+    this.addExperience();
     this.loadData();
   }
+
+  // ═══════════════════════════════════════════════════════════
+  //  DATA LOADING
+  // ═══════════════════════════════════════════════════════════
 
   async loadData(): Promise<void> {
     this.isLoading = true;
     try {
-      // Load job details
-      const job = await this.soap.getJobRequisitionById(this.requisitionId);
+      const [job, depts, skills, jobSkillsRaw, stages] = await Promise.all([
+        this.soap.getJobRequisitionById(this.requisitionId),
+        this.soap.getDepartments(),
+        this.soap.getSkills(),
+        this.soap.getJobSkillsByRequisition(this.requisitionId),
+        this.soap.getPipelineStages()
+      ]);
+
       if (!job) {
         this.showToast('Job not found.', 'error');
         this.router.navigate(['/candidate/jobs']);
         return;
       }
+
       this.jobTitle = job['title'] || '';
       this.jobDescription = job['description'] || '';
 
-      // Load department name
-      const depts = await this.soap.getDepartments();
       const dept = depts.find(d => d['department_id'] === job['department_id']);
       this.jobDepartment = dept ? (dept['department_name'] || '') : (job['department_id'] || '');
 
-      // Load all skills
-      const skills = await this.soap.getSkills();
       this.allSkills = skills.map(s => ({
         skill_id: s['skill_id'] || '',
         skill_name: s['skill_name'] || ''
       }));
 
-      // Load job-required skills
-      const jobSkills = await this.soap.getJobSkillsByRequisition(this.requisitionId);
       const skillMap = new Map(this.allSkills.map(s => [s.skill_id, s.skill_name]));
-      this.jobSkills = jobSkills.map(js => ({
+      this.jobSkills = jobSkillsRaw.map(js => ({
         skill_id: js['skill_id'] || '',
         skill_name: skillMap.get(js['skill_id'] || '') || js['skill_id'] || '',
         required_level: js['required_level'] || ''
       }));
 
-      // Load pipeline stages → get first stage
-      const stages = await this.soap.getPipelineStages();
+      // Sort stages by order and pick the first
       if (stages.length > 0) {
-        stages.sort((a, b) => parseInt(a['stage_order'] || '0') - parseInt(b['stage_order'] || '0'));
-        this.firstStageId = stages[0]['stage_id'] || '';
+        const sorted = [...stages].sort((a, b) =>
+          parseInt(a['stage_order'] || '0') - parseInt(b['stage_order'] || '0')
+        );
+        this.firstStageId = sorted[0]['stage_id'] || '';
       }
 
-      // Pre-fill email from session if candidate is logged in
-      const loggedInEmail = sessionStorage.getItem('loggedInUser') || '';
-      if (loggedInEmail) {
-        this.form.email = loggedInEmail;
+      // Pre-fill email from session (logged-in candidate)
+      const email = sessionStorage.getItem('loggedInUserEmail') || '';
+      if (email) this.form.email = email;
+
+      // ── Duplicate check: has this candidate already applied? ──
+      const candidateId = sessionStorage.getItem('loggedInCandidateId') || '';
+      if (candidateId) {
+        try {
+          const existingApps = await this.soap.getApplicationsByCandidate(candidateId);
+          const dup = existingApps.find(a => a['requisition_id'] === this.requisitionId);
+          if (dup) {
+            this.alreadyApplied = true;
+            this.existingApplicationId = dup['application_id'] || '';
+          }
+        } catch (e) {
+          console.warn('[ApplyJob] Could not check for existing applications:', e);
+        }
       }
 
     } catch (err) {
-      console.error('Failed to load data:', err);
-      this.showToast('Failed to load job details.', 'error');
+      console.error('[ApplyJob] loadData failed:', err);
+      this.showToast('Failed to load job details. Please try again.', 'error');
     } finally {
       this.isLoading = false;
     }
   }
 
-  // ═══════════════════════════════════════════════════
-  //  RESUME DRAG & DROP
-  // ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  //  DYNAMIC ARRAY HELPERS — Education
+  // ═══════════════════════════════════════════════════════════
+
+  addEducation(): void {
+    this.educations.push({
+      degree: '', field_of_study: '', institution: '',
+      start_year: '', end_year: '', grade: ''
+    });
+  }
+
+  removeEducation(i: number): void {
+    if (this.educations.length > 1) this.educations.splice(i, 1);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  DYNAMIC ARRAY HELPERS — Experience
+  // ═══════════════════════════════════════════════════════════
+
+  addExperience(): void {
+    this.experiences.push({
+      company: '', role: '', start_date: '', end_date: '',
+      description: '', is_current: false
+    });
+  }
+
+  removeExperience(i: number): void {
+    if (this.experiences.length > 1) this.experiences.splice(i, 1);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  DYNAMIC ARRAY HELPERS — Internships
+  // ═══════════════════════════════════════════════════════════
+
+  addInternship(): void {
+    this.internships.push({
+      company: '', role: '', duration: '', description: ''
+    });
+  }
+
+  removeInternship(i: number): void {
+    this.internships.splice(i, 1);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  DYNAMIC ARRAY HELPERS — Projects
+  // ═══════════════════════════════════════════════════════════
+
+  addProject(): void {
+    this.projects.push({
+      title: '', description: '', technologies: '', url: ''
+    });
+  }
+
+  removeProject(i: number): void {
+    this.projects.splice(i, 1);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  DYNAMIC ARRAY HELPERS — Certifications
+  // ═══════════════════════════════════════════════════════════
+
+  addCertification(): void {
+    this.certifications.push({
+      name: '', issuing_org: '', year: ''
+    });
+  }
+
+  removeCertification(i: number): void {
+    this.certifications.splice(i, 1);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SECTION TOGGLE
+  // ═══════════════════════════════════════════════════════════
+
+  toggleSection(section: string): void {
+    this.collapsedSections[section] = !this.collapsedSections[section];
+  }
+
+  isSectionCollapsed(section: string): boolean {
+    return !!this.collapsedSections[section];
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  RESUME DRAG & DROP + AI PARSING
+  // ═══════════════════════════════════════════════════════════
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -153,23 +325,26 @@ export class CandidateApplyJobComponent implements OnInit {
     event.preventDefault();
     event.stopPropagation();
     this.isDragOver = false;
-    if (event.dataTransfer && event.dataTransfer.files.length > 0) {
+    if (event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
       this.handleFile(event.dataTransfer.files[0]);
     }
   }
 
   onFileSelect(event: Event): void {
     const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length > 0) {
+    if (input && input.files && input.files.length > 0) {
       this.handleFile(input.files[0]);
     }
   }
 
   handleFile(file: File): void {
-    const allowed = ['application/pdf', 'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const allowed = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
     if (!allowed.includes(file.type)) {
-      this.showToast('Please upload a PDF or DOC file.', 'error');
+      this.showToast('Please upload a PDF or DOC/DOCX file.', 'error');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -178,17 +353,127 @@ export class CandidateApplyJobComponent implements OnInit {
     }
     this.resumeFile = file;
     this.resumeFileName = file.name;
-    // Resume parsing placeholder — will be done in a later phase
+    this.parseError = '';
+    this.parseSuccess = false;
+
+    // Automatically start AI parsing
+    this.parseResumeWithAI();
+  }
+
+  async parseResumeWithAI(): Promise<void> {
+    if (!this.resumeFile) return;
+    this.isParsing = true;
+    this.parseError = '';
+    this.parseSuccess = false;
+
+    try {
+      const parsed = await this.aiResume.parseResume(this.resumeFile);
+
+      // Auto-fill scalar form fields
+      if (parsed.first_name)        this.form.first_name        = parsed.first_name;
+      if (parsed.last_name)         this.form.last_name         = parsed.last_name;
+      if (!this.form.email && parsed.email)  this.form.email    = parsed.email;
+      if (parsed.phone)             this.form.phone             = parsed.phone;
+      if (parsed.location)          this.form.location          = parsed.location;
+      if (parsed.linkedin_url)      this.form.linkedin_url      = parsed.linkedin_url;
+      if (parsed.experience_years)  this.form.experience_years  = parsed.experience_years;
+      if (parsed.summary)           this.form.summary           = parsed.summary;
+      if (parsed.current_salary)    this.form.current_salary    = parsed.current_salary;
+      if (parsed.expected_salary)   this.form.expected_salary   = parsed.expected_salary;
+      if (parsed.notice_period)     this.form.notice_period     = parsed.notice_period;
+      if (parsed.highest_qualification) this.form.highest_qualification = parsed.highest_qualification;
+      if (parsed.portfolio_url)     this.form.portfolio_url     = parsed.portfolio_url;
+      if (parsed.github_url)        this.form.github_url        = parsed.github_url;
+
+      // Auto-fill Education
+      if (parsed.education?.length > 0) {
+        this.educations = parsed.education.map(e => ({
+          degree: e.degree || '',
+          field_of_study: e.field_of_study || '',
+          institution: e.institution || '',
+          start_year: e.start_year || '',
+          end_year: e.end_year || '',
+          grade: e.grade || ''
+        }));
+      }
+
+      // Auto-fill Experience
+      if (parsed.experience?.length > 0) {
+        this.experiences = parsed.experience.map(e => ({
+          company: e.company || '',
+          role: e.role || '',
+          start_date: e.start_date || '',
+          end_date: e.end_date || '',
+          description: e.description || '',
+          is_current: !!e.is_current
+        }));
+      }
+
+      // Auto-fill Internships
+      if (parsed.internships?.length > 0) {
+        this.internships = parsed.internships.map(i => ({
+          company: i.company || '',
+          role: i.role || '',
+          duration: i.duration || '',
+          description: i.description || ''
+        }));
+      }
+
+      // Auto-fill Projects
+      if (parsed.projects?.length > 0) {
+        this.projects = parsed.projects.map(p => ({
+          title: p.title || '',
+          description: p.description || '',
+          technologies: p.technologies || '',
+          url: p.url || ''
+        }));
+      }
+
+      // Auto-fill Certifications
+      if (parsed.certifications?.length > 0) {
+        this.certifications = parsed.certifications.map(c => ({
+          name: c.name || '',
+          issuing_org: c.issuing_org || '',
+          year: c.year || ''
+        }));
+      }
+
+      // Map AI-detected skills to DB skills
+      if (parsed.skills?.length > 0) {
+        for (const aiSkill of parsed.skills) {
+          const match = this.allSkills.find(s =>
+            s.skill_name.toLowerCase() === (aiSkill.skill_name || '').toLowerCase()
+          );
+          if (match && !this.selectedSkills.find(s => s.skill_id === match.skill_id)) {
+            this.selectedSkills.push({
+              skill_id: match.skill_id,
+              skill_name: match.skill_name,
+              experience_years: aiSkill.experience_years || '1'
+            });
+          }
+        }
+      }
+
+      this.parseSuccess = true;
+      this.cdr.detectChanges(); // Force UI update since fetch might run outside Zone
+    } catch (err: any) {
+      console.error('[ApplyJob] AI parse failed:', err);
+      this.parseError = err?.message || 'AI parsing failed. Please fill in the form manually.';
+    } finally {
+      this.isParsing = false;
+    }
   }
 
   removeResume(): void {
     this.resumeFile = null;
     this.resumeFileName = '';
+    this.parseSuccess = false;
+    this.parseError = '';
   }
 
-  // ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   //  SKILLS MANAGEMENT
-  // ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
 
   get availableSkills() {
     const usedIds = new Set(this.selectedSkills.map(s => s.skill_id));
@@ -213,98 +498,203 @@ export class CandidateApplyJobComponent implements OnInit {
     this.selectedSkills.splice(idx, 1);
   }
 
-  // ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
   //  FORM VALIDATION
-  // ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
 
   validate(): boolean {
     this.errors = {};
-    if (!this.form.first_name.trim()) this.errors['first_name'] = 'First name is required.';
-    if (!this.form.last_name.trim()) this.errors['last_name'] = 'Last name is required.';
+
+    if (!this.form.first_name.trim())
+      this.errors['first_name'] = 'First name is required.';
+
+    if (!this.form.last_name.trim())
+      this.errors['last_name'] = 'Last name is required.';
+
     if (!this.form.email.trim()) {
       this.errors['email'] = 'Email is required.';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.form.email)) {
       this.errors['email'] = 'Invalid email format.';
     }
-    if (!this.form.phone.trim()) {
+
+    if (!this.form.phone.trim())
       this.errors['phone'] = 'Phone number is required.';
-    } else if (!/^\+?[\d\-\s]{10,15}$/.test(this.form.phone)) {
-      this.errors['phone'] = 'Invalid phone number.';
-    }
-    if (!this.form.experience_years) {
+
+    if (!this.form.experience_years)
       this.errors['experience_years'] = 'Experience is required.';
-    }
-    if (!this.form.location.trim()) {
+
+    if (!this.form.location.trim())
       this.errors['location'] = 'Location is required.';
-    }
+
+    // Validate at least 1 education entry has a degree
+    const hasValidEducation = this.educations.some(e => e.degree.trim() && e.institution.trim());
+    if (!hasValidEducation)
+      this.errors['education'] = 'At least one education entry with degree and institution is required.';
+
     return Object.keys(this.errors).length === 0;
   }
 
-  // ═══════════════════════════════════════════════════
-  //  SUBMIT APPLICATION
-  // ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════
+  //  HELPER: Clean arrays (remove empty entries before submit)
+  // ═══════════════════════════════════════════════════════════
+
+  private cleanEducations(): EducationEntry[] {
+    return this.educations.filter(e => e.degree.trim() || e.institution.trim());
+  }
+
+  private cleanExperiences(): ExperienceEntry[] {
+    return this.experiences.filter(e => e.company.trim() || e.role.trim());
+  }
+
+  private cleanInternships(): InternshipEntry[] {
+    return this.internships.filter(i => i.company.trim() || i.role.trim());
+  }
+
+  private cleanProjects(): ProjectEntry[] {
+    return this.projects.filter(p => p.title.trim());
+  }
+
+  private cleanCertifications(): CertificationEntry[] {
+    return this.certifications.filter(c => c.name.trim());
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  SUBMIT APPLICATION — Full DB-correct flow
+  // ═══════════════════════════════════════════════════════════
 
   async submitApplication(): Promise<void> {
     if (!this.validate()) {
-      this.showToast('Please fix the errors in the form.', 'error');
+      this.showToast('Please fix the highlighted errors.', 'error');
       return;
     }
 
     this.isSubmitting = true;
 
     try {
-      // Step 1: Insert candidate record
-      const candidateResponse = await this.soap.insertCandidate({
-        first_name: this.form.first_name.trim(),
-        last_name: this.form.last_name.trim(),
-        email: this.form.email.trim(),
-        phone: this.form.phone.trim(),
-        linkedin_url: this.form.linkedin_url.trim(),
-        experience_years: this.form.experience_years,
-        location: this.form.location.trim()
-      });
+      // ── Step 1: Find or create candidate ──────────────────
+      let candidateId = sessionStorage.getItem('loggedInCandidateId') || '';
 
-      // Extract candidate_id from response
-      let candidateId = '';
-      try {
-        candidateId = candidateResponse.getElementsByTagName('candidate_id')[0]?.textContent || '';
-      } catch (e) {
-        // If extraction fails, try to find candidate by email
-        const found = await this.soap.getCandidateByEmail(this.form.email.trim());
-        if (found.length > 0) {
-          candidateId = found[0]['candidate_id'] || '';
+      if (!candidateId) {
+        // Check if already exists (avoids prevent_duplicate_candidate DB trigger error)
+        const existing = await this.soap.getCandidateByEmail(this.form.email.trim());
+        if (existing.length > 0) {
+          candidateId = existing[0]['candidate_id'] || '';
+          console.log('[Apply] Using existing candidate:', candidateId);
+        } else {
+          // Insert new candidate
+          let insertResp: any;
+          try {
+            insertResp = await this.soap.insertCandidate({
+              first_name:       this.form.first_name.trim(),
+              last_name:        this.form.last_name.trim(),
+              email:            this.form.email.trim(),
+              phone:            this.form.phone.trim(),
+              linkedin_url:     this.form.linkedin_url.trim(),
+              experience_years: this.form.experience_years,
+              location:         this.form.location.trim()
+            });
+          } catch (insertErr: any) {
+            // Race-condition duplicate → fall back to lookup
+            const msg = insertErr?.responseText || insertErr?.message || '';
+            if (msg.toLowerCase().includes('duplicate') || msg.toLowerCase().includes('already exists')) {
+              const found = await this.soap.getCandidateByEmail(this.form.email.trim());
+              if (found.length > 0) candidateId = found[0]['candidate_id'] || '';
+            } else {
+              throw insertErr;
+            }
+          }
+
+          // Extract candidate_id from JSON response
+          if (!candidateId && insertResp) {
+            try {
+              const nodes = $.cordys.json.find(insertResp, 'candidate_id');
+              if (nodes) {
+                const node = Array.isArray(nodes) ? nodes[0] : nodes;
+                candidateId = typeof node === 'string' ? node : (node?.text || '');
+              }
+            } catch (e) {
+              console.warn('[Apply] Could not extract candidate_id from response:', e);
+            }
+          }
+
+          // Final fallback
+          if (!candidateId) {
+            const found = await this.soap.getCandidateByEmail(this.form.email.trim());
+            if (found.length > 0) candidateId = found[0]['candidate_id'] || '';
+          }
         }
       }
 
       if (!candidateId) {
-        throw new Error('Failed to create candidate record.');
+        throw new Error('Could not determine Candidate ID. Please contact support.');
       }
 
-      // Step 2: Insert candidate skills
+      // Persist for My Applications page
+      sessionStorage.setItem('loggedInCandidateId', candidateId);
+
+      // ── Step 1.5: Final duplicate check (belt & suspenders) ──
+      try {
+        const existingApps = await this.soap.getApplicationsByCandidate(candidateId);
+        const dup = existingApps.find(a => a['requisition_id'] === this.requisitionId);
+        if (dup) {
+          this.alreadyApplied = true;
+          this.existingApplicationId = dup['application_id'] || '';
+          this.showToast('You have already applied to this job.', 'error');
+          return;
+        }
+      } catch (e) {
+        console.warn('[Apply] Duplicate check failed, proceeding:', e);
+      }
+
+      // ── Step 2: Insert candidate skills ───────────────────
       for (const skill of this.selectedSkills) {
-        await this.soap.insertCandidateSkill(candidateId, skill.skill_id, skill.experience_years);
+        try {
+          await this.soap.insertCandidateSkill(
+            candidateId, skill.skill_id, skill.experience_years
+          );
+        } catch (e) {
+          // Skill association may already exist — not fatal
+          console.warn('[Apply] Skill insert skipped (may exist):', skill.skill_id);
+        }
       }
 
-      // Step 3: Insert application
+      // ── Step 3: Insert application with all new fields ────
       await this.soap.insertApplication({
-        candidate_id: candidateId,
-        requisition_id: this.requisitionId,
-        source: this.form.source,
+        candidate_id:     candidateId,
+        requisition_id:   this.requisitionId,
+        source:           this.form.source,
         current_stage_id: this.firstStageId,
-        notes: this.form.cover_letter.trim()
+        notes:            '',
+
+        // JSONB fields (stringified JSON arrays)
+        education_details:      JSON.stringify(this.cleanEducations()),
+        experience_details:     JSON.stringify(this.cleanExperiences()),
+        internship_details:     JSON.stringify(this.cleanInternships()),
+        project_details:        JSON.stringify(this.cleanProjects()),
+        certification_details:  JSON.stringify(this.cleanCertifications()),
+
+        // Scalar fields
+        cover_letter:           this.form.cover_letter.trim(),
+        summary:                this.form.summary.trim(),
+        current_salary:         this.form.current_salary.trim(),
+        expected_salary:        this.form.expected_salary.trim(),
+        notice_period:          this.form.notice_period,
+        total_experience:       this.form.experience_years,
+        highest_qualification:  this.form.highest_qualification.trim(),
+        portfolio_url:          this.form.portfolio_url.trim(),
+        github_url:             this.form.github_url.trim(),
+        linkedin_url:           this.form.linkedin_url.trim(),
+        willing_to_relocate:    this.form.willing_to_relocate ? 'true' : 'false',
+        available_joining_date: this.form.available_joining_date
       });
 
       this.submitted = true;
       this.showToast('Application submitted successfully!', 'success');
 
     } catch (err: any) {
-      console.error('Application failed:', err);
-      const errMsg = err?.responseText || err?.message || 'Unknown error';
-      if (errMsg.includes('duplicate') || errMsg.includes('already exists')) {
-        this.showToast('A candidate with this email or phone already exists. Your application may be linked to the existing record.', 'error');
-      } else {
-        this.showToast('Failed to submit application. ' + errMsg, 'error');
-      }
+      console.error('[Apply] Submission failed:', err);
+      const msg = err?.responseText || err?.message || 'Unknown error';
+      this.showToast('Submission failed: ' + msg, 'error');
     } finally {
       this.isSubmitting = false;
     }
@@ -314,15 +704,12 @@ export class CandidateApplyJobComponent implements OnInit {
     this.router.navigate(['/candidate/jobs']);
   }
 
-  // ═══════════════════════════════════════════════════
-  //  HELPERS
-  // ═══════════════════════════════════════════════════
-
+  // ─── Toast ────────────────────────────────────────────────
   showToast(message: string, type: 'success' | 'error'): void {
     this.toastMessage = message;
     this.toastType = type;
     this.showToastFlag = true;
     if (this.toastTimeout) clearTimeout(this.toastTimeout);
-    this.toastTimeout = setTimeout(() => this.showToastFlag = false, 4000);
+    this.toastTimeout = setTimeout(() => this.showToastFlag = false, 5000);
   }
 }

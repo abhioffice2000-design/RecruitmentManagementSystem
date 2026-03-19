@@ -12,7 +12,7 @@ export class CandidateJobDetailComponent implements OnInit {
   job: Job | null = null;
   applied = false;
 
-  constructor(private route: ActivatedRoute, private dataService: MockDataService) {}
+  constructor(private route: ActivatedRoute, private dataService: MockDataService) { }
 
   ngOnInit() {
     const id = Number(this.route.snapshot.paramMap.get('id'));

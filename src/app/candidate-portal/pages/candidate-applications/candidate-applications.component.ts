@@ -220,6 +220,7 @@ export class CandidateApplicationsComponent implements OnInit {
   applications: AppRow[] = [];
   stages: { stage_id: string; stage_name: string; order: number; icon: string }[] = [];
   isLoading = true;
+  candidateId = '';
 
   private stageIcons: Record<string, string> = {
     'applied': 'fa-file-alt',
@@ -232,14 +233,25 @@ export class CandidateApplicationsComponent implements OnInit {
   constructor(private soap: SoapService, public router: Router) {}
 
   async ngOnInit(): Promise<void> {
+    this.candidateId = sessionStorage.getItem('loggedInCandidateId') || '';
     try {
-      const [stagesRaw, jobs, depts, apps, offers] = await Promise.all([
+      // Fetch stages, jobs, depts in parallel; then fetch ONLY this candidate's apps
+      const [stagesRaw, jobs, depts] = await Promise.all([
         this.soap.getPipelineStages(),
         this.soap.getJobRequisitions(),
-        this.soap.getDepartments(),
-        this.soap.getApplications(),
-        this.soap.getOffers()
+        this.soap.getDepartments()
       ]);
+
+      // Get applications for this candidate only
+      const apps = this.candidateId
+        ? await this.soap.getApplicationsByCandidate(this.candidateId)
+        : await this.soap.getApplications();
+
+      // Fetch offers for each application individually
+      const offerResults = await Promise.all(
+        apps.map(a => this.soap.getOffersByApplication(a['application_id'] || '').catch(() => []))
+      );
+      const offers = offerResults.flat();
 
       this.stages = stagesRaw
         .map(s => ({

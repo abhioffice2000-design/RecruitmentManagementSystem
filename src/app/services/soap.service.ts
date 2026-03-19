@@ -680,6 +680,26 @@ export class SoapService {
     source: string;
     current_stage_id: string;
     notes: string;
+    // ─── New JSONB fields (stringified JSON arrays) ───
+    education_details?: string;
+    experience_details?: string;
+    internship_details?: string;
+    project_details?: string;
+    certification_details?: string;
+    // ─── New scalar fields ────────────────────────────
+    cover_letter?: string;
+    summary?: string;
+    current_salary?: string;
+    expected_salary?: string;
+    notice_period?: string;
+    total_experience?: string;
+    highest_qualification?: string;
+    resume_url?: string;
+    portfolio_url?: string;
+    github_url?: string;
+    linkedin_url?: string;
+    willing_to_relocate?: string;
+    available_joining_date?: string;
   }): Promise<any> {
     if (this.useMockData) return Promise.resolve({ success: true });
     return this.call('UpdateTs_applications', {
@@ -689,17 +709,38 @@ export class SoapService {
             candidate_id: data.candidate_id,
             requisition_id: data.requisition_id,
             source: data.source,
-            referred_by: '',
+            // referred_by intentionally omitted — it's an optional FK, must be NULL not ''
             current_stage_id: data.current_stage_id,
             status: 'ACTIVE',
             notes: data.notes,
             applied_at: new Date().toISOString(),
+            // ─── JSONB columns (stringified JSON) ────
+            education_details: data.education_details || '',
+            experience_details: data.experience_details || '',
+            internship_details: data.internship_details || '',
+            project_details: data.project_details || '',
+            certification_details: data.certification_details || '',
+            // ─── Scalar columns ──────────────────────
+            cover_letter: data.cover_letter || '',
+            summary: data.summary || '',
+            current_salary: data.current_salary || '',
+            expected_salary: data.expected_salary || '',
+            notice_period: data.notice_period || '',
+            total_experience: data.total_experience || '',
+            highest_qualification: data.highest_qualification || '',
+            resume_url: data.resume_url || '',
+            portfolio_url: data.portfolio_url || '',
+            github_url: data.github_url || '',
+            linkedin_url: data.linkedin_url || '',
+            willing_to_relocate: data.willing_to_relocate || 'false',
+            available_joining_date: data.available_joining_date || '',
             temp1: '', temp2: '', temp3: '', temp4: '', temp5: ''
           }
         }
       }
     });
   }
+
 
   updateApplicationStage(oldData: Record<string, string>, newStageId: string): Promise<any> {
     if (this.useMockData) return Promise.resolve({ success: true });
@@ -716,11 +757,33 @@ export class SoapService {
             status: oldData['status'],
             notes: oldData['notes'] || '',
             applied_at: oldData['applied_at'] || '',
+            created_at: oldData['created_at'] || '',
+            created_by: oldData['created_by'] || '',
+            updated_at: oldData['updated_at'] || '',
+            updated_by: oldData['updated_by'] || '',
             temp1: oldData['temp1'] || '',
             temp2: oldData['temp2'] || '',
             temp3: oldData['temp3'] || '',
             temp4: oldData['temp4'] || '',
-            temp5: oldData['temp5'] || ''
+            temp5: oldData['temp5'] || '',
+            education_details: oldData['education_details'] || '',
+            experience_details: oldData['experience_details'] || '',
+            internship_details: oldData['internship_details'] || '',
+            project_details: oldData['project_details'] || '',
+            certification_details: oldData['certification_details'] || '',
+            cover_letter: oldData['cover_letter'] || '',
+            summary: oldData['summary'] || '',
+            current_salary: oldData['current_salary'] || '',
+            expected_salary: oldData['expected_salary'] || '',
+            notice_period: oldData['notice_period'] || '',
+            total_experience: oldData['total_experience'] || '',
+            highest_qualification: oldData['highest_qualification'] || '',
+            resume_url: oldData['resume_url'] || '',
+            portfolio_url: oldData['portfolio_url'] || '',
+            github_url: oldData['github_url'] || '',
+            linkedin_url: oldData['linkedin_url'] || '',
+            willing_to_relocate: oldData['willing_to_relocate'] || '',
+            available_joining_date: oldData['available_joining_date'] || ''
           }
         },
         'new': {
@@ -734,11 +797,33 @@ export class SoapService {
             status: oldData['status'],
             notes: oldData['notes'] || '',
             applied_at: oldData['applied_at'] || '',
+            created_at: oldData['created_at'] || '',
+            created_by: oldData['created_by'] || '',
+            updated_at: oldData['updated_at'] || '',
+            updated_by: oldData['updated_by'] || '',
             temp1: oldData['temp1'] || '',
             temp2: oldData['temp2'] || '',
             temp3: oldData['temp3'] || '',
             temp4: oldData['temp4'] || '',
-            temp5: oldData['temp5'] || ''
+            temp5: oldData['temp5'] || '',
+            education_details: oldData['education_details'] || '',
+            experience_details: oldData['experience_details'] || '',
+            internship_details: oldData['internship_details'] || '',
+            project_details: oldData['project_details'] || '',
+            certification_details: oldData['certification_details'] || '',
+            cover_letter: oldData['cover_letter'] || '',
+            summary: oldData['summary'] || '',
+            current_salary: oldData['current_salary'] || '',
+            expected_salary: oldData['expected_salary'] || '',
+            notice_period: oldData['notice_period'] || '',
+            total_experience: oldData['total_experience'] || '',
+            highest_qualification: oldData['highest_qualification'] || '',
+            resume_url: oldData['resume_url'] || '',
+            portfolio_url: oldData['portfolio_url'] || '',
+            github_url: oldData['github_url'] || '',
+            linkedin_url: oldData['linkedin_url'] || '',
+            willing_to_relocate: oldData['willing_to_relocate'] || '',
+            available_joining_date: oldData['available_joining_date'] || ''
           }
         }
       }
@@ -760,11 +845,33 @@ export class SoapService {
             status: oldData['status'],
             notes: oldData['notes'] || '',
             applied_at: oldData['applied_at'] || '',
+            created_at: oldData['created_at'] || '',
+            created_by: oldData['created_by'] || '',
+            updated_at: oldData['updated_at'] || '',
+            updated_by: oldData['updated_by'] || '',
             temp1: oldData['temp1'] || '',
             temp2: oldData['temp2'] || '',
             temp3: oldData['temp3'] || '',
             temp4: oldData['temp4'] || '',
-            temp5: oldData['temp5'] || ''
+            temp5: oldData['temp5'] || '',
+            education_details: oldData['education_details'] || '',
+            experience_details: oldData['experience_details'] || '',
+            internship_details: oldData['internship_details'] || '',
+            project_details: oldData['project_details'] || '',
+            certification_details: oldData['certification_details'] || '',
+            cover_letter: oldData['cover_letter'] || '',
+            summary: oldData['summary'] || '',
+            current_salary: oldData['current_salary'] || '',
+            expected_salary: oldData['expected_salary'] || '',
+            notice_period: oldData['notice_period'] || '',
+            total_experience: oldData['total_experience'] || '',
+            highest_qualification: oldData['highest_qualification'] || '',
+            resume_url: oldData['resume_url'] || '',
+            portfolio_url: oldData['portfolio_url'] || '',
+            github_url: oldData['github_url'] || '',
+            linkedin_url: oldData['linkedin_url'] || '',
+            willing_to_relocate: oldData['willing_to_relocate'] || '',
+            available_joining_date: oldData['available_joining_date'] || ''
           }
         },
         'new': {
@@ -778,11 +885,33 @@ export class SoapService {
             status: newStatus,
             notes: oldData['notes'] || '',
             applied_at: oldData['applied_at'] || '',
+            created_at: oldData['created_at'] || '',
+            created_by: oldData['created_by'] || '',
+            updated_at: oldData['updated_at'] || '',
+            updated_by: oldData['updated_by'] || '',
             temp1: oldData['temp1'] || '',
             temp2: oldData['temp2'] || '',
             temp3: oldData['temp3'] || '',
             temp4: oldData['temp4'] || '',
-            temp5: oldData['temp5'] || ''
+            temp5: oldData['temp5'] || '',
+            education_details: oldData['education_details'] || '',
+            experience_details: oldData['experience_details'] || '',
+            internship_details: oldData['internship_details'] || '',
+            project_details: oldData['project_details'] || '',
+            certification_details: oldData['certification_details'] || '',
+            cover_letter: oldData['cover_letter'] || '',
+            summary: oldData['summary'] || '',
+            current_salary: oldData['current_salary'] || '',
+            expected_salary: oldData['expected_salary'] || '',
+            notice_period: oldData['notice_period'] || '',
+            total_experience: oldData['total_experience'] || '',
+            highest_qualification: oldData['highest_qualification'] || '',
+            resume_url: oldData['resume_url'] || '',
+            portfolio_url: oldData['portfolio_url'] || '',
+            github_url: oldData['github_url'] || '',
+            linkedin_url: oldData['linkedin_url'] || '',
+            willing_to_relocate: oldData['willing_to_relocate'] || '',
+            available_joining_date: oldData['available_joining_date'] || ''
           }
         }
       }

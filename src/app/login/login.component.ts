@@ -203,40 +203,88 @@ export class LoginComponent implements OnInit {
   // ─── Role-Based Redirect ─────────────────────────────────
   redirectUser(roles: string[], username: string) {
     sessionStorage.setItem('loggedInUser', username);
+    const self = this;
 
-    // Fetch the user_id from ts_users table by email so all pages can reference it
-    this.fetchAndStoreUserId(username);
+    // Fetch the user details by email to determine true account_type
+    $.cordys.ajax({
+      method: 'Getuserdetailsbymail',
+      namespace: 'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      dataType: '* json',
+      parameters: { emailid: username }
+    })
+    .done((resp: any) => {
+      self.ngZone.run(() => {
+        let accountType = '';
+        try {
+          const tuples = $.cordys.json.find(resp, 'tuple');
+          if (tuples) {
+            const tuple = Array.isArray(tuples) ? tuples[0] : tuples;
+            const account = tuple?.old?.ts_accounts || tuple?.ts_accounts || tuple?.old || tuple;
+            accountType = typeof account?.account_type === 'string' ? account.account_type.toLowerCase() : (account?.account_type?.text?.toLowerCase() || '');
+            
+            // Store Candidate ID
+            const candidateIdStr = account?.candidate_id;
+            const candidateId = (candidateIdStr && typeof candidateIdStr === 'object' && candidateIdStr['@null'] === 'true') ? '' : (candidateIdStr || '');
+            if (candidateId) {
+              const finalCid = typeof candidateId === 'string' ? candidateId : candidateId.text || '';
+              sessionStorage.setItem('loggedInCandidateId', finalCid);
+              console.log('[Login] Stored loggedInCandidateId:', finalCid);
+            }
 
-    const roleRouteMap: { role: string; route: string; label: string }[] = [
-      { role: 'ADMIN_RMST1', route: '/admin', label: 'Admin Dashboard' },
-      { role: 'CANDIDATE_RMST1', route: '/candidate', label: 'Candidate Portal' },
-      { role: 'HR_RMST1', route: '/hr', label: 'HR Dashboard' },
-      { role: 'INTERVIEWER_RMST1', route: '/interviewer', label: 'Interviewer Portal' },
-      { role: 'MANAGER_RMST1', route: '/manager', label: 'Manager Dashboard' },
-    ];
+            // Store User ID and Department
+            const userIdStr = account?.user_id;
+            const userId = (userIdStr && typeof userIdStr === 'object' && userIdStr['@null'] === 'true') ? '' : (userIdStr || '');
+            if (userId) {
+              const validUserId = typeof userId === 'string' ? userId : userId.text || '';
+              sessionStorage.setItem('loggedInUserId', validUserId);
+              self.fetchAndStoreDepartmentId(validUserId);
+            }
+          }
+        } catch(e) { console.warn('Error parsing user details in redirectUser:', e); }
 
-    for (const entry of roleRouteMap) {
-      if (roles.includes(entry.role)) {
-        this.showToast(
-          `Login successful. Redirecting to ${entry.label}...`,
-          'success'
-        );
-        setTimeout(() => {
-          this.router.navigate([entry.route]).then((success) => {
-            console.log(
-              `Navigation to ${entry.route}:`,
-              success ? 'successful' : 'failed'
-            );
-          });
-        }, 800);
-        return;
-      }
-    }
+        // 1. Force candidate portal if account_type is candidate
+        if (accountType === 'candidate') {
+          self.doRedirect('/candidate', 'Candidate Portal');
+          return;
+        }
 
-    // No recognized role
-    this.isLoading = false;
-    this.showToast('Unauthorized user — no valid role assigned.', 'error');
+        // 2. Fallback to Cordys roles if not a candidate account
+        const roleRouteMap: { role: string; route: string; label: string }[] = [
+          { role: 'ADMIN_RMST1', route: '/admin', label: 'Admin Dashboard' },
+          { role: 'HR_RMST1', route: '/hr', label: 'HR Dashboard' },
+          { role: 'INTERVIEWER_RMST1', route: '/interviewer', label: 'Interviewer Portal' },
+          { role: 'MANAGER_RMST1', route: '/manager', label: 'Manager Dashboard' },
+          { role: 'CANDIDATE_RMST1', route: '/candidate', label: 'Candidate Portal' },
+        ];
+
+        for (const entry of roleRouteMap) {
+          if (roles.includes(entry.role)) {
+            self.doRedirect(entry.route, entry.label);
+            return;
+          }
+        }
+
+        self.isLoading = false;
+        self.showToast('Unauthorized user — no valid role assigned.', 'error');
+      });
+    })
+    .fail(() => {
+      self.ngZone.run(() => {
+        self.isLoading = false;
+        self.showToast('Failed to verify user account details.', 'error');
+      });
+    });
   }
+
+  private doRedirect(route: string, label: string) {
+    this.showToast(`Login successful. Redirecting to ${label}...`, 'success');
+    setTimeout(() => {
+      this.router.navigate([route]).then(success => {
+         console.log(`Navigation to ${route}:`, success ? 'successful' : 'failed');
+      });
+    }, 800);
+  }
+
 
   // ─── Fetch user details by email ────────────────
   private fetchAndStoreUserId(email: string) {
