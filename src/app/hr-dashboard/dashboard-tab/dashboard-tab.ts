@@ -1,8 +1,12 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { HeroService } from '../../hero.service';
 
 @Component({
   selector: 'app-dashboard-tab',
   standalone: true,
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="dashboard-content">
       <div class="header">
@@ -30,97 +34,411 @@ import { Component } from '@angular/core';
 
       <div class="stats-cards">
         <div class="card">
-          <div class="label">Total Employees</div>
+          <div class="label">Total Candidates Applied</div>
           <div class="value-row">
-            <span class="value">29 833</span>
-            <span class="badge green">↗ 20%</span>
+            <span class="value">{{ totalCandidatesApplied }}</span>
+            <span class="badge green">↗ 12%</span>
           </div>
         </div>
         <div class="card">
-          <div class="label">Job View</div>
+          <div class="label">Total Candidates Selected</div>
           <div class="value-row">
-            <span class="value">18 073</span>
-            <span class="badge green">↗ 31%</span>
+            <span class="value">{{ totalCandidatesSelected }}</span>
+            <span class="badge green">↗ 15%</span>
           </div>
         </div>
         <div class="card">
-          <div class="label">Job Applied</div>
+          <div class="label">Recent Hires</div>
           <div class="value-row">
-            <span class="value">11 982</span>
-            <span class="badge green">↗ 13%</span>
+            <span class="value">42</span>
+            <span class="badge green">↗ 5%</span>
           </div>
         </div>
         <div class="card">
-          <div class="label">Average Salary</div>
+          <div class="label">Currently Inprogress Candidates</div>
           <div class="value-row">
-            <span class="value">$ 3775</span>
-            <span class="badge red">↘ 9%</span>
+            <span class="value">{{ totalInProgressCandidates }}</span>
+            <span class="badge green">↗ 12%</span>
           </div>
         </div>
       </div>
 
-      <div class="middle-section">
-        <div class="chart-section job-stats">
-          <h3>Job Statistics</h3>
-          <div class="placeholder-chart" style="height: 200px; background: #fafafa; border-radius: 8px; border: 1px dashed #ccc; display:flex; align-items:center; justify-content:center;">
-             Chart Placeholder
+      <div class="middle-section" style="display: flex; flex-direction: column; gap: 24px;">
+        <div class="chart-section job-stats" style="flex: 1;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>Application Statistics</h3>
+            <div style="display: flex; align-items: center; gap: 12px">
+              <span style="font-size: 13px; color: #64748b; font-weight: 500;">Year To Date</span>
+              <select [(ngModel)]="selectedYear" (change)="onYearChange()" style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; color: #334155; outline: none; cursor: pointer;">
+                <option *ngFor="let year of availableYears" [value]="year">{{year}}</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="custom-bar-chart">
+            <div class="chart-bars-container">
+               <!-- Y-axis guide lines -->
+               <div class="guide-lines">
+                 <div class="line"></div>
+                 <div class="line"></div>
+                 <div class="line"></div>
+                 <div class="line"></div>
+                 <div class="line"></div>
+               </div>
+
+               <div class="bar-group" *ngFor="let data of chartData">
+                 <div class="bars">
+                   <div class="bar applied-bar" [style.height.%]="(data.applied / maxChartValue) * 100" title="Applied: {{data.applied}}">
+                     <span class="bar-label">{{data.applied}}</span>
+                   </div>
+                   <div class="bar selected-bar" [style.height.%]="(data.selected / maxChartValue) * 100" title="Selected: {{data.selected}}">
+                     <span class="bar-label">{{data.selected}}</span>
+                   </div>
+                 </div>
+                 <span class="month-label">{{data.month}}</span>
+               </div>
+            </div>
+            
+            <div class="chart-legend">
+               <div class="legend-item"><span class="color-box applied-box"></span> Candidates Applied</div>
+               <div class="legend-item"><span class="color-box selected-box"></span> Candidates Selected</div>
+            </div>
           </div>
         </div>
-        <div class="chart-section work-format">
-          <h3>Working Format</h3>
-          <div class="pie-chart-placeholder">
-             <div class="circle">
-               <span>Total</span>
-               <strong>322</strong>
-             </div>
-             <div class="legend">
-               <span>Onsite</span><span>Remote</span><span>Hybrid</span>
-             </div>
+        
+        <div style="display: flex; gap: 24px;">
+          <!-- Moving work format here due to layout adjustment for better chart width -->
+          <div class="chart-section" style="flex: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="margin: 0;">Application Breakdown</h3>
+              <select [(ngModel)]="selectedRole" (change)="onRoleChange()" style="padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; color: #334155; outline: none; cursor: pointer;">
+                <option *ngFor="let role of availableRoles" [value]="role">{{role}}</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-around; padding: 20px 0;">
+                <!-- Pie Chart -->
+                <div [style.background]="getPieChartGradient()" style="width: 180px; height: 180px; border-radius: 50%; position: relative; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: background 0.5s ease-in-out;">
+                   <div style="width: 120px; height: 120px; background: white; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                      <span style="font-size: 13px; color: #64748b; margin-bottom: 4px;">Total</span>
+                      <strong style="font-size: 24px; color: #1e293b; line-height: 1;">{{currentPieData.total}}</strong>
+                   </div>
+                </div>
+                <!-- Legend -->
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                         <span style="width: 14px; height: 14px; border-radius: 4px; background: #6366f1;"></span> 
+                         <span style="font-size: 14px; color: #334155; font-weight: 500;">Total Candidates Applied</span>
+                      </div>
+                      <strong style="color: #1e293b; font-size: 15px">{{currentPieData.applied}}</strong>
+                   </div>
+                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                         <span style="width: 14px; height: 14px; border-radius: 4px; background: #10b981;"></span> 
+                         <span style="font-size: 14px; color: #334155; font-weight: 500;">Candidates Selected</span>
+                      </div>
+                      <strong style="color: #1e293b; font-size: 15px">{{currentPieData.selected}}</strong>
+                   </div>
+                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                         <span style="width: 14px; height: 14px; border-radius: 4px; background: #3b82f6;"></span> 
+                         <span style="font-size: 14px; color: #334155; font-weight: 500;">Application In Progress</span>
+                      </div>
+                      <strong style="color: #1e293b; font-size: 15px">{{currentPieData.inProgress}}</strong>
+                   </div>
+                   <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                         <span style="width: 14px; height: 14px; border-radius: 4px; background: #f59e0b;"></span> 
+                         <span style="font-size: 14px; color: #334155; font-weight: 500;">Candidates Opt Out</span>
+                      </div>
+                      <strong style="color: #1e293b; font-size: 15px">{{currentPieData.optOut}}</strong>
+                   </div>
+                </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="employee-status">
-        <h3>Employee Status</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Job Title</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <div class="emp-name"><img src="https://via.placeholder.com/30"> Steven Bing</div>
-              </td>
-              <td>steven.bing&#64;example.com</td>
-              <td>Designer</td>
-              <td><span class="tag onboarding">Onboarding</span></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="emp-name"><img src="https://via.placeholder.com/30"> Wade Warren</div>
-              </td>
-              <td>wwarren&#64;example.com</td>
-              <td>Frontend Developer</td>
-              <td><span class="tag declined">Declined</span></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="emp-name"><img src="https://via.placeholder.com/30"> Jane Cooper</div>
-              </td>
-              <td>janecooper22&#64;example.com</td>
-              <td>User</td>
-              <td><span class="tag active">Active</span></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+
     </div>
   `,
-  styleUrls: ['../../hr-dashboard/hr-dashboard.scss']
+  styleUrls: ['../../hr-dashboard/hr-dashboard.scss'],
+  styles: [`
+    .custom-bar-chart {
+      display: flex;
+      flex-direction: column;
+      height: 280px;
+      margin-top: 20px;
+      font-family: 'Inter', sans-serif;
+      position: relative;
+    }
+    .chart-bars-container {
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-end;
+      flex: 1;
+      padding-bottom: 30px;
+      position: relative;
+      z-index: 10;
+    }
+    .guide-lines {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      z-index: -1;
+    }
+    .line {
+      height: 1px;
+      background-color: #f1f5f9;
+      width: 100%;
+    }
+    .line:last-child {
+      background-color: #cbd5e1;
+    }
+    .bar-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+      position: relative;
+    }
+    .bars {
+      display: flex;
+      align-items: flex-end;
+      height: 100%;
+      justify-content: center;
+      gap: 6px;
+      width: 44px;
+    }
+    .bar {
+      width: 16px;
+      border-radius: 4px 4px 0 0;
+      position: relative;
+      transition: height 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      cursor: pointer;
+    }
+    .applied-bar {
+      background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+      box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+    }
+    .selected-bar {
+      background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+      box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2);
+    }
+    .bar:hover {
+      filter: brightness(1.1);
+    }
+    .bar-label {
+      position: absolute;
+      top: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      font-weight: 700;
+      color: #334155;
+      opacity: 0;
+      transition: opacity 0.2s, top 0.2s;
+      background: white;
+      padding: 2px 6px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      z-index: 20;
+    }
+    .bar:hover .bar-label {
+      opacity: 1;
+      top: -28px;
+    }
+    .month-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #64748b;
+      position: absolute;
+      bottom: -25px;
+    }
+    .chart-legend {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 25px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+      color: #334155;
+      font-weight: 600;
+    }
+    .color-box {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 8px;
+    }
+    .applied-box {
+      background: #3b82f6;
+    }
+    .selected-box {
+      background: #10b981;
+    }
+    
+    .middle-section {
+      width: 100%;
+    }
+  `]
 })
-export class DashboardTab {}
+export class DashboardTab implements OnInit {
+  totalCandidatesApplied: string | number = 'Loading...';
+  totalCandidatesSelected: string | number = 'Loading...';
+  totalInProgressCandidates: string | number = 'Loading...';
+
+  constructor(private hs: HeroService) { }
+
+  ngOnInit() {
+    debugger;
+    this.fetchTotalApplied();
+    this.fetchTotalCandidatesSelected();
+    this.fetchCurrentlyInProgressCandidates();
+    debugger;
+  }
+
+  fetchTotalApplied() {
+    this.hs.ajax(
+      'GetTotalAppliedCandiatesCount',
+      'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      {}
+    ).then((resp: any) => {
+      console.log('Total Applied RPC Response:', resp);
+      try {
+        this.totalCandidatesApplied = resp.tuple.old.ts_applications.count;
+      } catch (e) {
+        console.error('Error parsing response from GetTotalAppliedCandiatesCount:', e);
+        this.totalCandidatesApplied = 'Error';
+      }
+    }).catch((err: any) => {
+      console.error('Error in GetTotalAppliedCandiatesCount AJAX call:', err);
+      this.totalCandidatesApplied = 'Error';
+    });
+  }
+
+  fetchCurrentlyInProgressCandidates() {
+    this.hs.ajax(
+      'CurrentlyInProgressCandidates',
+      'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      {}
+    ).then((resp: any) => {
+      console.log('Total Selected RPC Response:', resp);
+      try {
+        // Defaulting to the same parsing structure as fetchTotalApplied
+        this.totalInProgressCandidates = resp.tuple.old.ts_applications.count;
+      } catch (e) {
+        console.error('Error parsing response from GetTotalCandidatesSelectedCount:', e);
+        this.totalInProgressCandidates = 'Error';
+      }
+    }).catch((err: any) => {
+      console.error('Error in GetTotalCandidatesSelectedCount AJAX call:', err);
+      this.totalInProgressCandidates = 'Error';
+    });
+  }
+
+  fetchTotalCandidatesSelected() {
+    this.hs.ajax(
+      'GetAllSelectedCandidatesCount',
+      'http://schemas.cordys.com/RMST1DatabaseMetadata',
+      {}
+    ).then((resp: any) => {
+      console.log('Total Selected RPC Response:', resp);
+      try {
+        // Defaulting to the same parsing structure as fetchTotalApplied
+        this.totalCandidatesSelected = resp.tuple.old.ts_offers.count;
+      } catch (e) {
+        console.error('Error parsing response from GetTotalCandidatesSelectedCount:', e);
+        this.totalCandidatesSelected = 'Error';
+      }
+    }).catch((err: any) => {
+      console.error('Error in GetTotalCandidatesSelectedCount AJAX call:', err);
+      this.totalCandidatesSelected = 'Error';
+    });
+  }
+
+  selectedYear = new Date().getFullYear();
+  availableYears = [2022, 2023, 2024, 2025, 2026];
+
+  // Using a map to simulate different data per year
+  yearlyData: Record<number, Array<{ month: string, applied: number, selected: number }>> = {
+    2026: [
+      { month: 'Jan', applied: 320, selected: 85 },
+      { month: 'Feb', applied: 350, selected: 105 },
+      { month: 'Mar', applied: 480, selected: 170 },
+      { month: 'Apr', applied: 540, selected: 210 },
+      { month: 'May', applied: 410, selected: 120 },
+      { month: 'Jun', applied: 620, selected: 280 },
+      { month: 'Jul', applied: 590, selected: 195 },
+      { month: 'Aug', applied: 710, selected: 250 }
+    ],
+    2025: [
+      { month: 'Jan', applied: 290, selected: 70 },
+      { month: 'Feb', applied: 310, selected: 90 },
+      { month: 'Mar', applied: 420, selected: 140 },
+      { month: 'Apr', applied: 480, selected: 180 },
+      { month: 'May', applied: 390, selected: 110 },
+      { month: 'Jun', applied: 550, selected: 240 },
+      { month: 'Jul', applied: 520, selected: 175 },
+      { month: 'Aug', applied: 650, selected: 220 },
+      { month: 'Sep', applied: 600, selected: 200 },
+      { month: 'Oct', applied: 580, selected: 185 },
+      { month: 'Nov', applied: 490, selected: 150 },
+      { month: 'Dec', applied: 380, selected: 95 }
+    ]
+  };
+
+  chartData = this.yearlyData[this.selectedYear] || this.yearlyData[2026];
+
+  get maxChartValue() {
+    // Add 15% padding to the top of the chart so the highest bar isn't hitting the roof
+    const max = Math.max(...this.chartData.map(d => Math.max(d.applied, d.selected)));
+    return max * 1.15;
+  }
+
+  onYearChange() {
+    // Fallback to 2026 data if the selected year doesn't have specific data
+    this.chartData = this.yearlyData[this.selectedYear] || this.yearlyData[2026];
+  }
+
+  // --- Pie Chart Sector Data & Logic ---
+  selectedRole = 'All Roles';
+  availableRoles = ['All Roles', 'Frontend Developer', 'Backend Developer', 'UX Designer'];
+
+  pieDataByRole: Record<string, { total: number, applied: number, selected: number, inProgress: number, optOut: number }> = {
+    'All Roles': { total: 412, applied: 185, selected: 82, inProgress: 104, optOut: 41 },
+    'Frontend Developer': { total: 150, applied: 70, selected: 35, inProgress: 35, optOut: 10 },
+    'Backend Developer': { total: 180, applied: 80, selected: 30, inProgress: 45, optOut: 25 },
+    'UX Designer': { total: 82, applied: 35, selected: 17, inProgress: 24, optOut: 6 }
+  };
+
+  currentPieData = this.pieDataByRole['All Roles'];
+
+  onRoleChange() {
+    this.currentPieData = this.pieDataByRole[this.selectedRole] || this.pieDataByRole['All Roles'];
+  }
+
+  getPieChartGradient() {
+    const data = this.currentPieData;
+    const t = data.total;
+    if (t === 0) return 'none';
+
+    // Calculate cumulative percentages for the conic-gradient
+    const appliedPct = (data.applied / t) * 100;
+    const inProgressPct = appliedPct + ((data.inProgress / t) * 100);
+    const selectedPct = inProgressPct + ((data.selected / t) * 100);
+
+    // The conic-gradient colors follow the order in the legend:
+    // Applied (Indigo) -> In Progress (Blue) -> Selected (Emerald) -> Opt Out (Orange)
+    return `conic-gradient(#6366f1 0% ${appliedPct}%, #3b82f6 ${appliedPct}% ${inProgressPct}%, #10b981 ${inProgressPct}% ${selectedPct}%, #f59e0b ${selectedPct}% 100%)`;
+  }
+}
