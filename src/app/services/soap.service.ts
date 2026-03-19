@@ -32,8 +32,8 @@ export class SoapService {
    * @param ns      Namespace (defaults to RMST1DatabaseMetadata)
    * @param attributes Optional attributes for the method element (e.g. {reply: 'yes'})
    */
-  call(method: string, params: any, ns?: string): Promise<any> {
-    return this.hero.ajax(method, ns || this.NS, params);
+  call(method: string, params: any, ns?: string, data?: string): Promise<any> {
+    return this.hero.ajax(method, ns || this.NS, params, data);
   }
 
   /**
@@ -234,27 +234,36 @@ export class SoapService {
           }
         }
       }
-    }, undefined,);
+    }).then(resp => {
+      const rows = this.parseTuples(resp, 'ts_users');
+      return rows.length > 0 ? rows[0] : resp;
+    });
   }
 
   deleteUser(userData: any): Promise<any> {
     if (this.useMockData) return Promise.resolve({ success: true });
+
+    const userId = userData.user_id || userData.User_id || userData.id;
+    console.log(`[SoapService] Deleting user ${userId}`);
+
     return this.call('UpdateTs_users', {
       tuple: {
         'old': {
           ts_users: {
-            user_id: userData.User_id || userData.user_id || userData.id
+            user_id: userId
           }
         }
       }
-    }, undefined);
+    });
   }
 
   updateUserStatus(userData: any, newStatus: string): Promise<any> {
     if (this.useMockData) return Promise.resolve({ success: true });
 
-    // We need to send the mandatory fields in both old and new for a database update
-    const userId = userData.User_id || userData.user_id || userData.id;
+    // Use the database ID (user_id) for the update
+    const userId = userData.user_id || userData.User_id || userData.id;
+
+    console.log(`[SoapService] Updating status for user ${userId} to ${newStatus}`);
 
     return this.call('UpdateTs_users', {
       tuple: {
@@ -272,7 +281,75 @@ export class SoapService {
           }
         }
       }
-    }, undefined);
+    });
+  }
+
+  updateUser(oldData: any, newData: any): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+
+    // Core update logic using the tuple pattern
+    // Cordys Update service expects the 'old' element to contain identifying fields (like user_id)
+    // and the 'new' element to contain the updated values.
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    return this.call('UpdateTs_users', {
+      tuple: {
+        'old': {
+          ts_users: {
+            user_id: oldData.user_id || oldData.User_id
+          }
+        },
+        'new': {
+          ts_users: {
+            user_id: oldData.user_id || oldData.User_id,
+            first_name: newData.first_name,
+            last_name: newData.last_name,
+            email: newData.email,
+            password_hash: newData.password_hash || oldData.password_hash,
+            role: newData.role,
+            status: newData.status,
+            department_id: newData.department_id,
+            updated_at: now,
+            updated_by: newData.updated_by || 'admin',
+            temp1: newData.temp1 || '',
+            temp2: newData.temp2 || '',
+            temp3: newData.temp3 || '',
+            temp4: newData.temp4 || '',
+            temp5: newData.temp5 || ''
+          }
+        }
+      }
+    });
+  }
+
+  updateDepartment(oldData: any, newData: any): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    return this.call('UpdateMt_departments', {
+      tuple: {
+        'old': {
+          mt_departments: {
+            department_id: oldData.department_id || oldData.id
+          }
+        },
+        'new': {
+          mt_departments: {
+            department_id: oldData.department_id || oldData.id,
+            department_name: newData.department_name,
+            updated_at: now,
+            updated_by: newData.updated_by || 'admin',
+            temp1: newData.temp1 || '',
+            temp2: newData.temp2 || '',
+            temp3: newData.temp3 || '',
+            temp4: newData.temp4 || '',
+            temp5: newData.temp5 || ''
+          }
+        }
+      }
+    });
   }
 
   /**
@@ -286,22 +363,29 @@ export class SoapService {
     role: string;
   }): Promise<any> {
     if (this.useMockData) return Promise.resolve({ success: true });
-    return this.call('CreateUserInOrganization', {
-      User: {
-        UserName: { '@isAnonymous': '', 'text': data.userName },
-        Description: data.description,
-        Credentials: {
-          '@allowDuplicate': 'true',
-          UserIDPassword: {
-            UserID: data.userName,
-            Password: data.password
-          }
-        },
-        Roles: {
-          Role: { '@application': '', 'text': data.role }
-        }
-      }
-    }, 'http://schemas.cordys.com/UserManagement/1.0/Organization');
+
+    // Construct Raw XML string to be 100% accurate to the user's requested SOAP structure
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <CreateUserInOrganization xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName isAnonymous="">${data.userName}</UserName>
+        <Description>${data.description}</Description>
+        <Credentials allowDuplicate="true">
+          <UserIDPassword>
+            <UserID>${data.userName}</UserID>
+            <Password>${data.password}</Password>
+          </UserIDPassword>
+        </Credentials>
+        <Roles>
+          <Role application="">${data.role}</Role>
+        </Roles>
+      </User>
+    </CreateUserInOrganization>
+  </SOAP:Body>
+</SOAP:Envelope>`;
+
+    return this.call('CreateUserInOrganization', {}, 'http://schemas.cordys.com/UserManagement/1.0/Organization', soapXml);
   }
 
   /**
@@ -310,17 +394,119 @@ export class SoapService {
    */
   assignRoleToUser(userName: string, roleName: string): Promise<any> {
     if (this.useMockData) return Promise.resolve({ success: true });
-    return this.call('AssignRolesToUser', {
-      User: {
-        UserName: userName,
-        Roles: {
-          Role: {
-            '@application': '',
-            'text': roleName
+
+    // Construct Raw XML string to be 100% accurate to the user's requested SOAP structure
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <AssignRolesToUser xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName>${userName}</UserName>
+        <Roles>
+          <Role application="">${roleName}</Role>
+        </Roles>
+      </User>
+    </AssignRolesToUser>
+  </SOAP:Body>
+</SOAP:Envelope>`;
+
+    return this.call('AssignRolesToUser', {}, 'http://schemas.cordys.com/UserManagement/1.0/Organization', soapXml);
+  }
+
+  /**
+   * Remove a Cordys role from a user.
+   * Uses the RemoveRolesFromUser SOAP method.
+   */
+  removeRoleFromUser(userName: string, roleName: string): Promise<any> {
+    if (this.useMockData) return Promise.resolve({ success: true });
+
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <RemoveRolesFromUser xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName>${userName}</UserName>
+        <Roles>
+          <Role application="">${roleName}</Role>
+        </Roles>
+      </User>
+    </RemoveRolesFromUser>
+  </SOAP:Body>
+</SOAP:Envelope>`;
+
+    return this.call('RemoveRolesFromUser', {}, 'http://schemas.cordys.com/UserManagement/1.0/Organization', soapXml);
+  }
+
+  /**
+   * Fetch all roles assigned to a user in Cordys.
+   */
+  getUserRoles(userName: string): Promise<string[]> {
+    if (this.useMockData) return Promise.resolve([]);
+
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetRolesForUser xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName>${userName}</UserName>
+      </User>
+    </GetRolesForUser>
+  </SOAP:Body>
+</SOAP:Envelope>`;
+
+    return this.call('GetRolesForUser', {}, 'http://schemas.cordys.com/UserManagement/1.0/Organization', soapXml)
+      .then(resp => {
+        // Search for 'Role' at top level of response payload
+        let roles = $.cordys.json.find(resp, 'Role');
+
+        // If not found, look for '<Roles><Role>...</Role></Roles>' structure
+        if (!roles) {
+          const rolesContainer = $.cordys.json.find(resp, 'Roles');
+          if (rolesContainer && rolesContainer.Role) {
+            roles = rolesContainer.Role;
           }
         }
-      }
-    }, 'http://schemas.cordys.com/UserManagement/1.0/Organization');
+
+        if (!roles) return [];
+        const roleArr = Array.isArray(roles) ? roles : [roles];
+        return roleArr.map((r: any) => {
+          if (typeof r === 'string') return r;
+          // Extract the actual role name or DN from several possible fields
+          return r['#text'] || r['name'] || r['@name'] || r['Description'] || '';
+        }).filter(name => !!name);
+      });
+  }
+  getUserRolesDetail(userName: string): Promise<string[]> {
+    if (this.useMockData) return Promise.resolve([]);
+
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetUserDetails xmlns="http://schemas.cordys.com/UserManagement/1.0/Organization">
+      <User>
+        <UserName>${userName}</UserName>
+      </User>
+    </GetUserDetails>
+  </SOAP:Body>
+</SOAP:Envelope>`;
+
+    return this.call('GetUserDetails', {}, 'http://schemas.cordys.com/UserManagement/1.0/Organization', soapXml)
+      .then(resp => {
+        // Search for 'Role' at top level of response payload
+        let roles = $.cordys.json.find(resp, 'Role');
+
+        // If not found, look for '<Roles><Role>...</Role></Roles>' structure
+        if (!roles) {
+          const rolesContainer = $.cordys.json.find(resp, 'Roles');
+          if (rolesContainer && rolesContainer.Role) {
+            roles = rolesContainer.Role;
+          }
+        }
+
+        if (!roles) return [];
+        const roleArr = Array.isArray(roles) ? roles : [roles];
+        return roleArr.map((r: any) => {
+          if (typeof r === 'string') return r;
+          // Extract the actual role name or DN from several possible fields
+          return r['#text'] || r['name'] || r['@name'] || r['Description'] || '';
+        }).filter(name => !!name);
+      });
   }
 
   // ═══════════════════════════════════════════════════════
@@ -575,6 +761,84 @@ export class SoapService {
     return this.call('GetTs_candidatesObjects', {
       fromCandidate_id: '0', toCandidate_id: 'zzzzzzzzzz'
     }).then(resp => this.parseTuples(resp, 'ts_candidates'));
+  }
+
+  getAllCandidates(): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve(MOCK_CANDIDATES);
+    // Use the exact SOAP structure provided by the user
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+<SOAP:Body>
+<GetAllCandidates xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" preserveSpace="no" qAccess="0" qValues="" />
+</SOAP:Body>
+</SOAP:Envelope>`;
+    return this.call('GetAllCandidates', {}, 'http://schemas.cordys.com/RMST1DatabaseMetadata', soapXml)
+      .then(resp => this.parseTuples(resp, 'ts_candidates'));
+  }
+
+  getAllCandidatesCount(): Promise<number> {
+    if (this.useMockData) return Promise.resolve(MOCK_CANDIDATES.length);
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllCandidatesCount xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`;
+    return this.call('GetAllCandidatesCount', {}, 'http://schemas.cordys.com/RMST1DatabaseMetadata', soapXml)
+      .then(resp => {
+        const rows = this.parseTuples(resp);
+        if (rows && rows.length > 0) {
+          // Robustly find the count value (checks common Cordys field names)
+          const countVal = rows[0]['count'] || rows[0]['COUNT'] || rows[0]['candidate_count'] || '0';
+          return parseInt(typeof countVal === 'string' ? countVal : (countVal['#text'] || '0'));
+        }
+        return 0;
+      });
+  }
+
+  getAllJobsCount(): Promise<number> {
+    if (this.useMockData) return Promise.resolve(MOCK_JOB_REQUISITIONS.length);
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllJobsCount xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`;
+    return this.call('GetAllJobsCount', {}, 'http://schemas.cordys.com/RMST1DatabaseMetadata', soapXml)
+      .then(resp => {
+        const rows = this.parseTuples(resp);
+        if (rows && rows.length > 0) {
+          const countVal = rows[0]['count'] || rows[0]['COUNT'] || rows[0]['job_count'] || '0';
+          return parseInt(typeof countVal === 'string' ? countVal : (countVal['#text'] || '0'));
+        }
+        return 0;
+      });
+  }
+
+  getAllInterviewsCount(): Promise<number> {
+    if (this.useMockData) return Promise.resolve(18); // Default mock value
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetAllInterviewsCount xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`;
+    return this.call('GetAllInterviewsCount', {}, 'http://schemas.cordys.com/RMST1DatabaseMetadata', soapXml)
+      .then(resp => {
+        const rows = this.parseTuples(resp);
+        if (rows && rows.length > 0) {
+          const countVal = rows[0]['count'] || rows[0]['COUNT'] || rows[0]['interview_count'] || '0';
+          return parseInt(typeof countVal === 'string' ? countVal : (countVal['#text'] || '0'));
+        }
+        return 0;
+      });
+  }
+
+  getRecentActivities(): Promise<Record<string, string>[]> {
+    if (this.useMockData) return Promise.resolve([]);
+    const soapXml = `<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <GetRecentActivities xmlns="http://schemas.cordys.com/RMST1DatabaseMetadata" preserveSpace="no" qAccess="0" qValues="" />
+  </SOAP:Body>
+</SOAP:Envelope>`;
+    return this.call('GetRecentActivities', {}, 'http://schemas.cordys.com/RMST1DatabaseMetadata', soapXml)
+      .then(resp => this.parseTuples(resp));
   }
 
   getCandidateById(candidateId: string): Promise<Record<string, string> | null> {

@@ -5,17 +5,9 @@
       <h1 class="page-title">Dashboard Overview</h1>
       <p class="page-subtitle">Welcome back, here's what's happening today.</p>
     </div>
-    <div class="header-actions">
-      <button class="btn btn-primary glass-panel">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:16px; height:16px; margin-right: 0.5rem">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        New Job Posting
-      </button>
-    </div>
   </div>
 
-  <div class="grid grid-cols-4 metrics-grid">
+  <div class="grid grid-cols-3 metrics-grid">
     <ng-container *ngFor="let metric of metrics">
       <div class="card metric-card glass-panel">
         <div class="metric-header">
@@ -54,7 +46,6 @@
             <tr>
               <th>Candidate</th>
               <th>Role</th>
-              <th>Action</th>
               <th>Status</th>
               <th>Time</th>
             </tr>
@@ -63,9 +54,8 @@
             <tr *ngFor="let activity of recentActivities">
               <td><strong>{{ activity.candidate }}</strong></td>
               <td>{{ activity.role }}</td>
-              <td>{{ activity.action }}</td>
               <td>
-                <span class="badge" [class.badge-success]="activity.status === 'Completed'" [class.badge-primary]="activity.status === 'In Progress'" [class.badge-warning]="activity.status === 'Pending' || activity.status === 'Wait for response'" [class.badge-danger]="activity.status === 'Closed'">
+                <span class="badge" [class.badge-success]="activity.status === 'Completed' || activity.status === 'ACTIVE'" [class.badge-primary]="activity.status === 'In Progress'" [class.badge-warning]="activity.status === 'Pending' || activity.status === 'Wait for response'" [class.badge-danger]="activity.status === 'Closed'">
                   {{ activity.status }}
                 </span>
               </td>
