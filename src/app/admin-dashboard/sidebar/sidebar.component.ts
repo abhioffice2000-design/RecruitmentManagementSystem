@@ -2,6 +2,8 @@ import { Component, Input, Output, EventEmitter } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { CommonModule } from '@angular/common';
 
+declare var $: any;
+
 @Component({
   selector: 'app-sidebar',
   standalone: true,
@@ -27,4 +29,52 @@ export class SidebarComponent {
     { label: 'Users & Roles', path: '/admin/users', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
     { label: 'Settings', path: '/admin/settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' }
   ];
+
+  logout() {
+    try {
+      sessionStorage.clear();
+      localStorage.clear();
+      this.clearAllCookies();
+      if (typeof $ !== 'undefined' && $?.cordys?.authentication?.sso) {
+        $.cordys.authentication.sso.logout();
+      }
+      window.location.href = '/login';
+    } catch (e) {
+      console.error('Logout error:', e);
+      window.location.href = '/login';
+    }
+  }
+
+  private clearAllCookies(): void {
+    const cookies = document.cookie.split(';');
+    const hostname = window.location.hostname;
+    const domains = [hostname, '.' + hostname, hostname.split('.').slice(-2).join('.'), ''];
+    const paths = ['/', '', '/login', '/admin'];
+    for (const cookie of cookies) {
+      const eqPos = cookie.indexOf('=');
+      const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+      if (name) {
+        for (const domain of domains) {
+          for (const path of paths) {
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'}`;
+            if (domain) {
+              document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'};domain=${domain}`;
+            }
+          }
+        }
+      }
+    }
+    const cordysCookies = ['defaultinst_AuthContext', 'defaultinst_ct', 'defaultinst_SAMLart', 'JSESSIONID', 'SAMLart'];
+    for (const cookieName of cordysCookies) {
+      for (const domain of domains) {
+        for (const path of paths) {
+          document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'}`;
+          if (domain) {
+            document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'};domain=${domain}`;
+          }
+        }
+      }
+    }
+  }
 }
+

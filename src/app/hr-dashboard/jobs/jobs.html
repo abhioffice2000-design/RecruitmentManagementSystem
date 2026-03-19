@@ -85,10 +85,12 @@
             </td>
             <td class="text-muted">{{ formatDate(job.created_at) }}</td>
             <td>
-              <button class="btn-view" (click)="viewDetails(job)">View Details</button>
-              <button class="btn-edit" *ngIf="job.status === 'REJECTED'" (click)="editJob(job)">
-                ✏️ Edit & Resubmit
-              </button>
+              <div class="action-buttons">
+                <button class="btn-view" (click)="viewDetails(job)">View Details</button>
+                <button class="btn-edit" *ngIf="job.status === 'REJECTED'" (click)="editJob(job)">
+                  Edit & Resubmit
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>

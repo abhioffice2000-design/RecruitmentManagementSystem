@@ -2,6 +2,8 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/router';
 
+declare var $: any;
+
 @Component({
   selector: 'app-candidate-portal',
   standalone: true,
@@ -74,6 +76,10 @@ import { RouterOutlet, RouterLink, RouterLinkActive, Router } from '@angular/rou
       border-radius: 8px; font-size: 14px; width: 100%; text-align: left;
       &:hover { background: #334155; color: #e2e8f0; }
     }
+    .logout-btn {
+      color: #ef4444;
+      &:hover { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+    }
     .portal-main { flex: 1; margin-left: 250px; padding: 24px; transition: margin-left 0.2s; }
     .sidebar.collapsed + .portal-main { margin-left: 64px; }
   `]
@@ -90,7 +96,50 @@ export class CandidatePortal {
   constructor(private router: Router) {}
 
   logout(): void {
-    sessionStorage.clear();
-    this.router.navigate(['/login']);
+    try {
+      sessionStorage.clear();
+      localStorage.clear();
+      this.clearAllCookies();
+      if (typeof $ !== 'undefined' && $?.cordys?.authentication?.sso) {
+        $.cordys.authentication.sso.logout();
+      }
+      window.location.href = '/login';
+    } catch (e) {
+      console.error('Logout error:', e);
+      window.location.href = '/login';
+    }
+  }
+
+  private clearAllCookies(): void {
+    const cookies = document.cookie.split(';');
+    const hostname = window.location.hostname;
+    const domains = [hostname, '.' + hostname, hostname.split('.').slice(-2).join('.'), ''];
+    const paths = ['/', '', '/login', '/candidate'];
+    for (const cookie of cookies) {
+      const eqPos = cookie.indexOf('=');
+      const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+      if (name) {
+        for (const domain of domains) {
+          for (const path of paths) {
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'}`;
+            if (domain) {
+              document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'};domain=${domain}`;
+            }
+          }
+        }
+      }
+    }
+    const cordysCookies = ['defaultinst_AuthContext', 'defaultinst_ct', 'defaultinst_SAMLart', 'JSESSIONID', 'SAMLart'];
+    for (const cookieName of cordysCookies) {
+      for (const domain of domains) {
+        for (const path of paths) {
+          document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'}`;
+          if (domain) {
+            document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path || '/'};domain=${domain}`;
+          }
+        }
+      }
+    }
   }
 }
+
